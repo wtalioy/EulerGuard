@@ -3,8 +3,10 @@ package events
 import "time"
 
 type ExecEvent struct {
-	PID  uint32
-	PPID uint32
+	PID   uint32
+	PPID  uint32
+	Comm  [16]byte
+	PComm [16]byte
 }
 
 type ProcessedEvent struct {

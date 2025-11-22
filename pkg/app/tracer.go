@@ -40,11 +40,11 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 	}
 	defer objs.Close()
 
-	kp, err := link.Kprobe("__x64_sys_execve", objs.HandleExecve, nil)
+	tp, err := link.Tracepoint("sched", "sched_process_exec", objs.HandleExec, nil)
 	if err != nil {
-		return fmt.Errorf("attach kprobe: %w", err)
+		return fmt.Errorf("attach tracepoint: %w", err)
 	}
-	defer kp.Close()
+	defer tp.Close()
 
 	reader, err := ringbuf.NewReader(objs.Events)
 	if err != nil {
@@ -85,12 +85,15 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 }
 
 func decodeExecEvent(data []byte) (events.ExecEvent, error) {
-	if len(data) < 8 {
+	if len(data) < 40 {
 		return events.ExecEvent{}, fmt.Errorf("exec event payload too small: %d bytes", len(data))
 	}
 
-	return events.ExecEvent{
-		PID:  binary.LittleEndian.Uint32(data[0:4]),
-		PPID: binary.LittleEndian.Uint32(data[4:8]),
-	}, nil
+	var ev events.ExecEvent
+	ev.PID = binary.LittleEndian.Uint32(data[0:4])
+	ev.PPID = binary.LittleEndian.Uint32(data[4:8])
+	copy(ev.Comm[:], data[8:24])
+	copy(ev.PComm[:], data[24:40])
+
+	return ev, nil
 }

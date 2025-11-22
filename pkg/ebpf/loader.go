@@ -9,8 +9,8 @@ import (
 )
 
 type ExecveObjects struct {
-	HandleExecve *ebpf.Program `ebpf:"handle_execve"`
-	Events       *ebpf.Map     `ebpf:"events"`
+	HandleExec *ebpf.Program `ebpf:"handle_exec"`
+	Events     *ebpf.Map     `ebpf:"events"`
 }
 
 func LoadExecveObjects(objPath string) (*ExecveObjects, error) {
@@ -41,9 +41,9 @@ func (o *ExecveObjects) Close() error {
 	}
 
 	var firstErr error
-	if o.HandleExecve != nil {
-		if err := o.HandleExecve.Close(); err != nil {
-			firstErr = fmt.Errorf("close handle_execve: %w", err)
+	if o.HandleExec != nil {
+		if err := o.HandleExec.Close(); err != nil {
+			firstErr = fmt.Errorf("close handle_exec: %w", err)
 		}
 	}
 	if o.Events != nil {

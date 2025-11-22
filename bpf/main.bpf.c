@@ -3,9 +3,13 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 
+#define TASK_COMM_LEN 16
+
 struct exec_event {
     u32 pid;
     u32 ppid;
+    char comm[TASK_COMM_LEN];
+    char pcomm[TASK_COMM_LEN];
 };
 
 struct {
@@ -21,11 +25,12 @@ static __always_inline u32 get_parent_pid(struct task_struct* task)
     return BPF_CORE_READ(task, real_parent, tgid);
 }
 
-SEC("kprobe/__x64_sys_execve")
-int BPF_KPROBE(handle_execve)
+SEC("tp/sched/sched_process_exec")
+int handle_exec(struct trace_event_raw_sched_process_exec* ctx)
 {
     struct exec_event* event;
     struct task_struct* task = (struct task_struct*)bpf_get_current_task_btf();
+    struct task_struct* parent;
     u64 pid_tgid = bpf_get_current_pid_tgid();
     u32 pid = pid_tgid >> 32;
 
@@ -35,6 +40,15 @@ int BPF_KPROBE(handle_execve)
 
     event->pid = pid;
     event->ppid = get_parent_pid(task);
+    bpf_get_current_comm(&event->comm, sizeof(event->comm));
+
+    // Get parent process name
+    parent = BPF_CORE_READ(task, real_parent);
+    if (parent) {
+        BPF_CORE_READ_STR_INTO(&event->pcomm, parent, comm);
+    } else {
+        event->pcomm[0] = '\0';
+    }
 
     bpf_ringbuf_submit(event, 0);
     return 0;

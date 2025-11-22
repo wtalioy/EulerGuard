@@ -1,6 +1,7 @@
 package output
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -27,12 +28,36 @@ func NewPrinter(jsonLines bool, resolver *proc.Resolver, meter *metrics.RateMete
 }
 
 func (p *Printer) Print(ev events.ExecEvent) {
+	// Extract comm from event (null-terminated C string)
+	commBytes := ev.Comm[:]
+	if idx := bytes.IndexByte(commBytes, 0); idx != -1 {
+		commBytes = commBytes[:idx]
+	}
+	processName := string(commBytes)
+
+	// Fallback to resolver if comm is empty
+	if processName == "" {
+		processName = p.resolver.Lookup(ev.PID)
+	}
+
+	// Extract parent comm from event
+	pcommBytes := ev.PComm[:]
+	if idx := bytes.IndexByte(pcommBytes, 0); idx != -1 {
+		pcommBytes = pcommBytes[:idx]
+	}
+	parentName := string(pcommBytes)
+
+	// Fallback to resolver if pcomm is empty
+	if parentName == "" {
+		parentName = p.resolver.Lookup(ev.PPID)
+	}
+
 	meta := events.ProcessedEvent{
-		Event:  ev,
-		Timestamp:  time.Now().UTC(),
-		Process:    p.resolver.Lookup(ev.PID),
-		Parent: p.resolver.Lookup(ev.PPID),
-		Rate:       p.meter.Tick(),
+		Event:     ev,
+		Timestamp: time.Now().UTC(),
+		Process:   processName,
+		Parent:    parentName,
+		Rate:      p.meter.Tick(),
 	}
 
 	if p.jsonLines {

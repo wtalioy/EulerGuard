@@ -1,29 +1,35 @@
 package output
 
 import (
-	"bytes"
+	"bufio"
 	"encoding/json"
+	"eulerguard/pkg/config"
+	"eulerguard/pkg/events"
+	"eulerguard/pkg/metrics"
+	"eulerguard/pkg/proctree"
+	"eulerguard/pkg/rules"
+	"eulerguard/pkg/utils"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"strings"
+	"sync"
 	"time"
-
-	"eulerguard/pkg/events"
-	"eulerguard/pkg/metrics"
-	"eulerguard/pkg/proctree"
-	"eulerguard/pkg/rules"
 )
 
 type Printer struct {
-	jsonLines bool
-	meter     *metrics.RateMeter
-	logFile   *os.File
-	writer    io.Writer
+	jsonLines  bool
+	meter      *metrics.RateMeter
+	logFile    *os.File
+	logWriter  *bufio.Writer
+	writer     io.Writer
+	flushTimer *time.Ticker
+	stopFlush  chan struct{}
+	closeOnce  sync.Once
 }
 
-func NewPrinter(jsonLines bool, meter *metrics.RateMeter, logPath string) (*Printer, error) {
+func NewPrinter(jsonLines bool, meter *metrics.RateMeter, logPath string, bufferSize int) (*Printer, error) {
 	// Check if log rotation is needed
 	if err := rotateLogIfNeeded(logPath); err != nil {
 		log.Printf("Warning: log rotation failed: %v", err)
@@ -34,41 +40,76 @@ func NewPrinter(jsonLines bool, meter *metrics.RateMeter, logPath string) (*Prin
 		return nil, fmt.Errorf("failed to open log file: %w", err)
 	}
 
-	p := &Printer{
-		jsonLines: jsonLines,
-		meter:     meter,
-		logFile:   f,
-		writer:    io.MultiWriter(os.Stdout, f),
+	// Create buffered writer for log file
+	if bufferSize <= 0 {
+		bufferSize = config.DefaultLogBufferSize
 	}
+	logWriter := bufio.NewWriterSize(f, bufferSize)
+
+	p := &Printer{
+		jsonLines:  jsonLines,
+		meter:      meter,
+		logFile:    f,
+		logWriter:  logWriter,
+		writer:     io.MultiWriter(os.Stdout, logWriter),
+		flushTimer: time.NewTicker(1 * time.Second),
+		stopFlush:  make(chan struct{}),
+	}
+
+	// Start periodic flush goroutine
+	go func() {
+		for {
+			select {
+			case <-p.flushTimer.C:
+				_ = logWriter.Flush()
+			case <-p.stopFlush:
+				return
+			}
+		}
+	}()
 
 	log.Printf("Logging to file: %s", logPath)
 	return p, nil
 }
 
 func (p *Printer) Close() error {
-	if p.logFile != nil {
-		return p.logFile.Close()
-	}
-	return nil
+	var closeErr error
+
+	// Ensure Close is idempotent - only execute cleanup once
+	p.closeOnce.Do(func() {
+		// Stop flush goroutine
+		if p.flushTimer != nil {
+			p.flushTimer.Stop()
+		}
+		if p.stopFlush != nil {
+			close(p.stopFlush)
+		}
+
+		// Flush remaining data
+		if p.logWriter != nil {
+			if err := p.logWriter.Flush(); err != nil {
+				log.Printf("Warning: failed to flush log buffer: %v", err)
+			}
+		}
+
+		// Close file
+		if p.logFile != nil {
+			closeErr = p.logFile.Close()
+		}
+	})
+
+	return closeErr
 }
 
 func (p *Printer) Print(ev events.ExecEvent) events.ProcessedEvent {
-	// Extract comm from event (null-terminated C string)
-	commBytes := ev.Comm[:]
-	if idx := bytes.IndexByte(commBytes, 0); idx != -1 {
-		commBytes = commBytes[:idx]
-	}
-	processName := string(commBytes)
+	// Extract and normalize comm from event (null-terminated C string)
+	processName := strings.TrimSpace(utils.ExtractCString(ev.Comm[:]))
 	if processName == "" {
 		processName = "unknown"
 	}
 
-	// Extract parent comm from event
-	pcommBytes := ev.PComm[:]
-	if idx := bytes.IndexByte(pcommBytes, 0); idx != -1 {
-		pcommBytes = pcommBytes[:idx]
-	}
-	parentName := string(pcommBytes)
+	// Extract and normalize parent comm from event
+	parentName := strings.TrimSpace(utils.ExtractCString(ev.PComm[:]))
 	if parentName == "" {
 		parentName = "unknown"
 	}
@@ -122,35 +163,31 @@ func (p *Printer) PrintAlert(alert rules.Alert) {
 		return
 	}
 
+	// Format alert text once
+	alertText := formatAlertText(alert.Rule.Name, alert.Rule.Severity, alert.Message,
+		alert.Event.Event.PID, alert.Event.Process,
+		alert.Event.Event.PPID, alert.Event.Parent,
+		alert.Event.Event.CgroupID)
+
+	// Output to stdout with colors
 	severityColor := getSeverityColor(alert.Rule.Severity)
 	resetColor := "\033[0m"
+	fmt.Fprintf(os.Stdout, "%s%s%s", severityColor, alertText, resetColor)
 
-	fmt.Fprintf(os.Stdout, "%s[Alert!] Rule '%s' triggered [Severity: %s]%s\n",
-		severityColor,
-		alert.Rule.Name,
-		alert.Rule.Severity,
-		resetColor)
-	fmt.Fprintf(os.Stdout, "  Description: %s\n", alert.Message)
-	fmt.Fprintf(os.Stdout, "  Process: PID=%d(%s) ← PPID=%d(%s) | Cgroup=%d\n",
-		alert.Event.Event.PID, alert.Event.Process,
-		alert.Event.Event.PPID, alert.Event.Parent,
-		alert.Event.Event.CgroupID)
-
-	fmt.Fprintf(p.logFile, "[Alert!] Rule '%s' triggered [Severity: %s]\n",
-		alert.Rule.Name,
-		alert.Rule.Severity)
-	fmt.Fprintf(p.logFile, "  Description: %s\n", alert.Message)
-	fmt.Fprintf(p.logFile, "  Process: PID=%d(%s) ← PPID=%d(%s) | Cgroup=%d\n",
-		alert.Event.Event.PID, alert.Event.Process,
-		alert.Event.Event.PPID, alert.Event.Parent,
-		alert.Event.Event.CgroupID)
+	// Output to log file without colors
+	fmt.Fprint(p.logWriter, alertText)
 }
 
-func (p *Printer) PrintFileOpenAlert(ev *events.FileOpenEvent, chain []*proctree.ProcessInfo, rule *rules.Rule) {
-	filename := extractFilename(ev.Filename)
-	severityColor := getSeverityColor(rule.Severity)
-	resetColor := "\033[0m"
+// formatAlertText creates the alert message text
+func formatAlertText(ruleName, severity, description string, pid uint32, process string, ppid uint32, parent string, cgroupID uint64) string {
+	return fmt.Sprintf("[Alert!] Rule '%s' triggered [Severity: %s]\n"+
+		"  Description: %s\n"+
+		"  Process: PID=%d(%s) ← PPID=%d(%s) | Cgroup=%d\n",
+		ruleName, severity, description,
+		pid, process, ppid, parent, cgroupID)
+}
 
+func (p *Printer) PrintFileOpenAlert(ev *events.FileOpenEvent, chain []*proctree.ProcessInfo, rule *rules.Rule, filename string) {
 	if p.jsonLines {
 		data := map[string]interface{}{
 			"type":        "file_access_alert",
@@ -172,57 +209,64 @@ func (p *Printer) PrintFileOpenAlert(ev *events.FileOpenEvent, chain []*proctree
 		return
 	}
 
-	// Terminal output with colors
-	fmt.Fprintf(os.Stdout, "%s[ALERT!] Rule '%s' triggered [Severity: %s]%s\n",
-		severityColor, rule.Name, rule.Severity, resetColor)
-	fmt.Fprintf(os.Stdout, "  Description: %s\n", rule.Description)
-	fmt.Fprintf(os.Stdout, "  File: %s\n", filename)
-	fmt.Fprintf(os.Stdout, "  PID: %d | Cgroup: %d | Flags: 0x%x\n", ev.PID, ev.CgroupID, ev.Flags)
+	// Format alert text once
+	alertText := formatFileAlertText(rule.Name, rule.Severity, rule.Description,
+		filename, ev.PID, ev.CgroupID, ev.Flags, chain)
+
+	// Output to stdout with colors
+	severityColor := getSeverityColor(rule.Severity)
+	resetColor := "\033[0m"
+	fmt.Fprintf(os.Stdout, "%s%s%s", severityColor, alertText, resetColor)
+
+	// Output to log file without colors
+	fmt.Fprint(p.logWriter, alertText)
+}
+
+// formatFileAlertText creates the file alert message text
+func formatFileAlertText(ruleName, severity, description, filename string,
+	pid uint32, cgroupID uint64, flags uint32, chain []*proctree.ProcessInfo) string {
+
+	var builder strings.Builder
+	fmt.Fprintf(&builder, "[ALERT!] Rule '%s' triggered [Severity: %s]\n", ruleName, severity)
+	fmt.Fprintf(&builder, "  Description: %s\n", description)
+	fmt.Fprintf(&builder, "  File: %s\n", filename)
+	fmt.Fprintf(&builder, "  PID: %d | Cgroup: %d | Flags: 0x%x\n", pid, cgroupID, flags)
 
 	if len(chain) > 0 {
-		fmt.Fprintf(os.Stdout, "  Attack Chain: %s\n", formatChain(chain))
+		fmt.Fprintf(&builder, "  Attack Chain: %s\n", formatChain(chain))
 	}
 
-	// Log file (plain text)
-	fmt.Fprintf(p.logFile, "[ALERT!] Rule '%s' triggered [Severity: %s]\n", rule.Name, rule.Severity)
-	fmt.Fprintf(p.logFile, "  Description: %s\n", rule.Description)
-	fmt.Fprintf(p.logFile, "  File: %s\n", filename)
-	fmt.Fprintf(p.logFile, "  PID: %d | Cgroup: %d | Flags: 0x%x\n", ev.PID, ev.CgroupID, ev.Flags)
-	if len(chain) > 0 {
-		fmt.Fprintf(p.logFile, "  Attack Chain: %s\n", formatChain(chain))
-	}
+	return builder.String()
 }
 
 func formatChain(chain []*proctree.ProcessInfo) string {
-	var parts []string
-	for i := len(chain) - 1; i >= 0; i-- {
-		info := chain[i]
-		parts = append(parts, fmt.Sprintf("%s(%d)", info.Comm, info.PID))
+	parts := make([]string, len(chain))
+	for i, info := range reverseChain(chain) {
+		parts[i] = fmt.Sprintf("%s(%d)", info.Comm, info.PID)
 	}
 	return strings.Join(parts, " -> ")
 }
 
 func formatChainJSON(chain []*proctree.ProcessInfo) []map[string]interface{} {
-	var result []map[string]interface{}
-	for i := len(chain) - 1; i >= 0; i-- {
-		info := chain[i]
-		result = append(result, map[string]interface{}{
+	result := make([]map[string]interface{}, len(chain))
+	for i, info := range reverseChain(chain) {
+		result[i] = map[string]interface{}{
 			"pid":       info.PID,
 			"ppid":      info.PPID,
 			"comm":      info.Comm,
 			"cgroup_id": info.CgroupID,
-		})
+		}
 	}
 	return result
 }
 
-func extractFilename(filename [256]byte) string {
-	for i, b := range filename {
-		if b == 0 {
-			return string(filename[:i])
-		}
+// reverseChain returns the chain in reverse order (oldest ancestor first)
+func reverseChain(chain []*proctree.ProcessInfo) []*proctree.ProcessInfo {
+	reversed := make([]*proctree.ProcessInfo, len(chain))
+	for i, info := range chain {
+		reversed[len(chain)-1-i] = info
 	}
-	return string(filename[:])
+	return reversed
 }
 
 func getSeverityColor(severity string) string {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 )
 
@@ -33,7 +34,7 @@ func rotateLogIfNeeded(logPath string) error {
 }
 
 func rotateLog(logPath string) error {
-	timestamp := time.Now().Format("20251122-150405")
+	timestamp := time.Now().Format("20060102-150405")
 	dir := filepath.Dir(logPath)
 	base := filepath.Base(logPath)
 	ext := filepath.Ext(base)
@@ -61,7 +62,29 @@ func cleanupOldLogs(dir, baseName, ext string) {
 		return
 	}
 
-	for i := 0; i < len(matches)-maxBackups; i++ {
-		_ = os.Remove(matches[i])
+	// Sort by modification time (oldest first) using efficient sort.Slice
+	type fileInfo struct {
+		path    string
+		modTime time.Time
+	}
+	
+	files := make([]fileInfo, 0, len(matches))
+	for _, match := range matches {
+		info, err := os.Stat(match)
+		if err != nil {
+			continue
+		}
+		files = append(files, fileInfo{path: match, modTime: info.ModTime()})
+	}
+	
+	// Sort oldest first - O(n log n) instead of O(n²)
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].modTime.Before(files[j].modTime)
+	})
+	
+	// Delete oldest files (deleteCount is already bounded by len(files))
+	deleteCount := len(files) - maxBackups
+	for i := 0; i < deleteCount; i++ {
+		_ = os.Remove(files[i].path)
 	}
 }

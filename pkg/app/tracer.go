@@ -17,7 +17,9 @@ import (
 	"eulerguard/pkg/output"
 	"eulerguard/pkg/proctree"
 	"eulerguard/pkg/rules"
+	"eulerguard/pkg/utils"
 
+	cebpf "github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 )
@@ -35,7 +37,7 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 		return fmt.Errorf("must run as root (current euid=%d)", os.Geteuid())
 	}
 
-	objs, err := ebpf.LoadExecveObjects(t.opts.BPFPath)
+	objs, err := ebpf.LoadExecveObjects(t.opts.BPFPath, t.opts.RingBufferSize)
 	if err != nil {
 		return err
 	}
@@ -67,7 +69,7 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 
 	meter := metrics.NewRateMeter(2 * time.Second)
 
-	printer, err := output.NewPrinter(t.opts.JSONLines, meter, t.opts.LogFile)
+	printer, err := output.NewPrinter(t.opts.JSONLines, meter, t.opts.LogFile, t.opts.LogBufferSize)
 	if err != nil {
 		return fmt.Errorf("failed to create printer: %w", err)
 	}
@@ -85,8 +87,13 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 
 	ruleEngine := rules.NewEngine(loadedRules)
 
+	// Populate monitored_paths BPF map from rules
+	if err := t.populateMonitoredPaths(objs.MonitoredPaths, loadedRules); err != nil {
+		log.Printf("Warning: failed to populate monitored paths: %v", err)
+	}
+
 	// Create process tree
-	processTree := proctree.NewProcessTree(30 * time.Minute)
+	processTree := proctree.NewProcessTree(t.opts.ProcessTreeMaxAge, t.opts.ProcessTreeMaxSize)
 
 	log.Printf("EulerGuard tracer ready (BPF object: %s)", t.opts.BPFPath)
 
@@ -102,97 +109,152 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 			return fmt.Errorf("read ringbuf: %w", err)
 		}
 
-		// Decode event type first
+		// Process event based on type
 		if len(record.RawSample) < 1 {
 			continue
 		}
 
-		eventType := record.RawSample[0]
-
-		switch eventType {
-		case 1: // EVENT_TYPE_EXEC
-			ev, err := decodeExecEvent(record.RawSample)
-			if err != nil {
-				log.Printf("Error decoding exec event: %v", err)
-				continue
-			}
-
-			// Add to process tree
-			processTree.AddProcess(ev.PID, ev.PPID, ev.CgroupID, extractComm(ev.Comm))
-
-			// Print the event and get the processed event
-			processedEvent := printer.Print(ev)
-
-			// Match against rules
-			alerts := ruleEngine.Match(processedEvent)
-			for _, alert := range alerts {
-				printer.PrintAlert(alert)
-			}
-
-		case 2: // EVENT_TYPE_FILE_OPEN
-			ev, err := decodeFileOpenEvent(record.RawSample)
-			if err != nil {
-				log.Printf("Error decoding file open event: %v", err)
-				continue
-			}
-
-			// Check if file access matches any rules
-			filename := extractFilename(ev.Filename)
-			matched, rule := ruleEngine.MatchFile(filename, ev.PID, ev.CgroupID)
-			if matched && rule != nil {
-				// Get attack chain
-				chain := processTree.GetAncestors(ev.PID)
-				printer.PrintFileOpenAlert(ev, chain, rule)
-			}
+		switch events.EventType(record.RawSample[0]) {
+		case events.EventTypeExec:
+			t.handleExecEvent(record.RawSample, processTree, printer, ruleEngine)
+		case events.EventTypeFileOpen:
+			t.handleFileOpenEvent(record.RawSample, processTree, printer, ruleEngine)
 		}
 	}
 }
 
+// handleExecEvent processes exec events
+func (t *ExecveTracer) handleExecEvent(data []byte, processTree *proctree.ProcessTree,
+	printer *output.Printer, ruleEngine *rules.Engine) {
+
+	ev, err := decodeExecEvent(data)
+	if err != nil {
+		log.Printf("Error decoding exec event: %v", err)
+		return
+	}
+
+	// Add to process tree
+	processTree.AddProcess(ev.PID, ev.PPID, ev.CgroupID, utils.ExtractCString(ev.Comm[:]))
+
+	// Print the event and get the processed event
+	processedEvent := printer.Print(ev)
+
+	// Match against rules and print alerts
+	for _, alert := range ruleEngine.Match(processedEvent) {
+		printer.PrintAlert(alert)
+	}
+}
+
+// handleFileOpenEvent processes file open events
+func (t *ExecveTracer) handleFileOpenEvent(data []byte, processTree *proctree.ProcessTree,
+	printer *output.Printer, ruleEngine *rules.Engine) {
+
+	ev, err := decodeFileOpenEvent(data)
+	if err != nil {
+		log.Printf("Error decoding file open event: %v", err)
+		return
+	}
+
+	// Check if file access matches any rules
+	filename := utils.ExtractCString(ev.Filename[:])
+	if matched, rule := ruleEngine.MatchFile(filename, ev.PID, ev.CgroupID); matched && rule != nil {
+		chain := processTree.GetAncestors(ev.PID)
+		printer.PrintFileOpenAlert(&ev, chain, rule, filename)
+	}
+}
+
+const (
+	// Event sizes: type(1) + fields
+	minExecEventSize     = 1 + 4 + 4 + 8 + events.TaskCommLen + events.TaskCommLen // 49 bytes
+	minFileOpenEventSize = 1 + 4 + 8 + 4 + events.PathMaxLen                       // 273 bytes
+)
+
 func decodeExecEvent(data []byte) (events.ExecEvent, error) {
-	if len(data) < 49 {
+	if len(data) < minExecEventSize {
 		return events.ExecEvent{}, fmt.Errorf("exec event payload too small: %d bytes", len(data))
 	}
 
 	var ev events.ExecEvent
-	// Skip type byte at index 0
-	ev.PID = binary.LittleEndian.Uint32(data[1:5])
-	ev.PPID = binary.LittleEndian.Uint32(data[5:9])
-	ev.CgroupID = binary.LittleEndian.Uint64(data[9:17])
-	copy(ev.Comm[:], data[17:33])
-	copy(ev.PComm[:], data[33:49])
+	offset := 1 // Skip type byte at index 0
+	ev.PID = binary.LittleEndian.Uint32(data[offset : offset+4])
+	offset += 4
+	ev.PPID = binary.LittleEndian.Uint32(data[offset : offset+4])
+	offset += 4
+	ev.CgroupID = binary.LittleEndian.Uint64(data[offset : offset+8])
+	offset += 8
+	copy(ev.Comm[:], data[offset:offset+16])
+	offset += 16
+	copy(ev.PComm[:], data[offset:offset+16])
 
 	return ev, nil
 }
 
-func decodeFileOpenEvent(data []byte) (*events.FileOpenEvent, error) {
-	if len(data) < 273 { // 1 + 4 + 8 + 4 + 256 = 273
-		return nil, fmt.Errorf("file open event too small: %d bytes", len(data))
+func decodeFileOpenEvent(data []byte) (events.FileOpenEvent, error) {
+	if len(data) < minFileOpenEventSize {
+		return events.FileOpenEvent{}, fmt.Errorf("file open event too small: %d bytes", len(data))
 	}
 
-	ev := &events.FileOpenEvent{}
-	// Skip type byte at index 0
-	ev.PID = binary.LittleEndian.Uint32(data[1:5])
-	ev.CgroupID = binary.LittleEndian.Uint64(data[5:13])
-	ev.Flags = binary.LittleEndian.Uint32(data[13:17])
-	copy(ev.Filename[:], data[17:273])
+	var ev events.FileOpenEvent
+	offset := 1 // Skip type byte at index 0
+	ev.PID = binary.LittleEndian.Uint32(data[offset : offset+4])
+	offset += 4
+	ev.CgroupID = binary.LittleEndian.Uint64(data[offset : offset+8])
+	offset += 8
+	ev.Flags = binary.LittleEndian.Uint32(data[offset : offset+4])
+	offset += 4
+	copy(ev.Filename[:], data[offset:offset+events.PathMaxLen])
 
 	return ev, nil
 }
 
-func extractComm(comm [16]byte) string {
-	for i, b := range comm {
-		if b == 0 {
-			return string(comm[:i])
-		}
-	}
-	return string(comm[:])
+// populateMonitoredPaths extracts file paths from rules and populates the BPF map
+func (t *ExecveTracer) populateMonitoredPaths(monitoredPathsMap *cebpf.Map, loadedRules []rules.Rule) error {
+	// Extract unique paths from rules
+	pathSet := extractMonitoredPaths(loadedRules)
+
+	// Populate BPF map with paths
+	return populateBPFMap(monitoredPathsMap, pathSet)
 }
 
-func extractFilename(filename [256]byte) string {
-	for i, b := range filename {
-		if b == 0 {
-			return string(filename[:i])
+// extractMonitoredPaths gets unique file paths from rules
+func extractMonitoredPaths(rules []rules.Rule) map[string]bool {
+	pathSet := make(map[string]bool)
+
+	for _, rule := range rules {
+		if rule.Match.Filename != "" {
+			pathSet[rule.Match.Filename] = true
+		}
+		if rule.Match.FilePath != "" {
+			pathSet[rule.Match.FilePath] = true
 		}
 	}
-	return string(filename[:])
+
+	// If no paths specified, add common sensitive paths as defaults
+	if len(pathSet) == 0 {
+		for _, path := range []string{"/etc/", "/root/", "/home/"} {
+			pathSet[path] = true
+		}
+	}
+
+	return pathSet
+}
+
+// populateBPFMap adds paths to the BPF monitored_paths map
+func populateBPFMap(monitoredPathsMap *cebpf.Map, paths map[string]bool) error {
+	count := 0
+	enabled := uint8(1)
+
+	for path := range paths {
+		var keyBuf [events.PathMaxLen]byte
+		copy(keyBuf[:], path)
+
+		if err := monitoredPathsMap.Put(keyBuf, enabled); err != nil {
+			log.Printf("Warning: failed to add path '%s' to BPF map: %v", path, err)
+			continue
+		}
+		count++
+	}
+
+	log.Printf("Populated %d monitored paths in BPF map", count)
+	return nil
 }

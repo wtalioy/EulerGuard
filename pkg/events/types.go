@@ -7,21 +7,25 @@ type EventType uint8
 const (
 	EventTypeExec     EventType = 1
 	EventTypeFileOpen EventType = 2
+
+	// Buffer sizes (must match BPF definitions)
+	TaskCommLen = 16
+	PathMaxLen  = 256
 )
 
 type ExecEvent struct {
 	PID      uint32
 	PPID     uint32
 	CgroupID uint64
-	Comm     [16]byte
-	PComm    [16]byte
+	Comm     [TaskCommLen]byte
+	PComm    [TaskCommLen]byte
 }
 
 type FileOpenEvent struct {
 	PID      uint32
 	CgroupID uint64
 	Flags    uint32
-	Filename [256]byte
+	Filename [PathMaxLen]byte
 }
 
 type Event struct {

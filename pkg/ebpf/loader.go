@@ -12,9 +12,10 @@ type ExecveObjects struct {
 	HandleExec       *ebpf.Program `ebpf:"handle_exec"`
 	TracepointOpenat *ebpf.Program `ebpf:"tracepoint_openat"`
 	Events           *ebpf.Map     `ebpf:"events"`
+	MonitoredPaths   *ebpf.Map     `ebpf:"monitored_paths"`
 }
 
-func LoadExecveObjects(objPath string) (*ExecveObjects, error) {
+func LoadExecveObjects(objPath string, ringBufSize int) (*ExecveObjects, error) {
 	absPath, err := filepath.Abs(objPath)
 	if err != nil {
 		return nil, fmt.Errorf("resolve bpf path: %w", err)
@@ -26,6 +27,13 @@ func LoadExecveObjects(objPath string) (*ExecveObjects, error) {
 	spec, err := ebpf.LoadCollectionSpec(absPath)
 	if err != nil {
 		return nil, fmt.Errorf("load collection spec: %w", err)
+	}
+
+	// Configure ring buffer size if specified
+	if ringBufSize > 0 {
+		if eventsSpec, ok := spec.Maps["events"]; ok {
+			eventsSpec.MaxEntries = uint32(ringBufSize)
+		}
 	}
 
 	objs := &ExecveObjects{}
@@ -55,6 +63,11 @@ func (o *ExecveObjects) Close() error {
 	if o.Events != nil {
 		if err := o.Events.Close(); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("close events map: %w", err)
+		}
+	}
+	if o.MonitoredPaths != nil {
+		if err := o.MonitoredPaths.Close(); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("close monitored_paths map: %w", err)
 		}
 	}
 	return firstErr

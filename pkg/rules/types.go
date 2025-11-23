@@ -4,6 +4,14 @@ import (
 	"eulerguard/pkg/events"
 )
 
+type MatchType string
+
+const (
+	MatchTypeExact    MatchType = "exact"
+	MatchTypeContains MatchType = "contains"
+	MatchTypePrefix   MatchType = "prefix"
+)
+
 type Rule struct {
 	Name        string         `yaml:"name"`
 	Description string         `yaml:"description"`
@@ -13,13 +21,15 @@ type Rule struct {
 }
 
 type MatchCondition struct {
-	ProcessName string `yaml:"process_name,omitempty"`
-	ParentName  string `yaml:"parent_name,omitempty"`
-	PID         uint32 `yaml:"pid,omitempty"`
-	PPID        uint32 `yaml:"ppid,omitempty"`
-	InContainer bool   `yaml:"in_container,omitempty"`
-	Filename    string `yaml:"filename,omitempty"`
-	FilePath    string `yaml:"file_path,omitempty"`
+	ProcessName     string    `yaml:"process_name,omitempty"`
+	ProcessNameType MatchType `yaml:"process_name_type,omitempty"`
+	ParentName      string    `yaml:"parent_name,omitempty"`
+	ParentNameType  MatchType `yaml:"parent_name_type,omitempty"`
+	PID             uint32    `yaml:"pid,omitempty"`
+	PPID            uint32    `yaml:"ppid,omitempty"`
+	InContainer     bool      `yaml:"in_container,omitempty"`
+	Filename        string    `yaml:"filename,omitempty"`
+	FilePath        string    `yaml:"file_path,omitempty"`
 }
 
 type RuleSet struct {

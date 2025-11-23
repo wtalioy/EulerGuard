@@ -87,15 +87,15 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 
 	ruleEngine := rules.NewEngine(loadedRules)
 
-	// Populate monitored_paths BPF map from rules
-	if err := t.populateMonitoredPaths(objs.MonitoredPaths, loadedRules); err != nil {
-		log.Printf("Warning: failed to populate monitored paths: %v", err)
-	}
-
 	// Create process tree
 	processTree := proctree.NewProcessTree(t.opts.ProcessTreeMaxAge, t.opts.ProcessTreeMaxSize)
 
-	log.Printf("EulerGuard tracer ready (BPF object: %s)", t.opts.BPFPath)
+	// Populate monitored paths from rules into BPF map
+	if err := populateMonitoredPaths(objs.MonitoredPaths, loadedRules); err != nil {
+		return fmt.Errorf("failed to populate monitored paths: %w", err)
+	}
+
+	log.Printf("EulerGuard tracer ready (BPF object: %s, monitoring paths from rules.yaml)", t.opts.BPFPath)
 
 	for {
 		record, err := reader.Read()
@@ -207,54 +207,47 @@ func decodeFileOpenEvent(data []byte) (events.FileOpenEvent, error) {
 	return ev, nil
 }
 
-// populateMonitoredPaths extracts file paths from rules and populates the BPF map
-func (t *ExecveTracer) populateMonitoredPaths(monitoredPathsMap *cebpf.Map, loadedRules []rules.Rule) error {
+// populateMonitoredPaths extracts all monitored paths from rules and populates the BPF map
+func populateMonitoredPaths(bpfMap *cebpf.Map, ruleList []rules.Rule) error {
+	if bpfMap == nil {
+		return fmt.Errorf("monitored_paths map is nil")
+	}
+
 	// Extract unique paths from rules
-	pathSet := extractMonitoredPaths(loadedRules)
+	pathSet := make(map[string]struct{})
+
+	for _, rule := range ruleList {
+		// Add exact filenames
+		if rule.Match.Filename != "" {
+			pathSet[rule.Match.Filename] = struct{}{}
+		}
+
+		// Add file path prefixes (directory paths)
+		if rule.Match.FilePath != "" {
+			pathSet[rule.Match.FilePath] = struct{}{}
+		}
+	}
+
+	if len(pathSet) == 0 {
+		log.Printf("Warning: No file access rules found in rules.yaml")
+		return nil
+	}
 
 	// Populate BPF map with paths
-	return populateBPFMap(monitoredPathsMap, pathSet)
-}
-
-// extractMonitoredPaths gets unique file paths from rules
-func extractMonitoredPaths(rules []rules.Rule) map[string]bool {
-	pathSet := make(map[string]bool)
-
-	for _, rule := range rules {
-		if rule.Match.Filename != "" {
-			pathSet[rule.Match.Filename] = true
-		}
-		if rule.Match.FilePath != "" {
-			pathSet[rule.Match.FilePath] = true
-		}
-	}
-
-	// If no paths specified, add common sensitive paths as defaults
-	if len(pathSet) == 0 {
-		for _, path := range []string{"/etc/", "/root/", "/home/"} {
-			pathSet[path] = true
-		}
-	}
-
-	return pathSet
-}
-
-// populateBPFMap adds paths to the BPF monitored_paths map
-func populateBPFMap(monitoredPathsMap *cebpf.Map, paths map[string]bool) error {
 	count := 0
-	enabled := uint8(1)
+	value := uint8(1) // Dummy value, we only care about key existence
 
-	for path := range paths {
-		var keyBuf [events.PathMaxLen]byte
-		copy(keyBuf[:], path)
+	for path := range pathSet {
+		// Convert path to fixed-size byte array (required by BPF map)
+		key := make([]byte, events.PathMaxLen)
+		copy(key, []byte(path))
 
-		if err := monitoredPathsMap.Put(keyBuf, enabled); err != nil {
-			log.Printf("Warning: failed to add path '%s' to BPF map: %v", path, err)
-			continue
+		if err := bpfMap.Put(key, value); err != nil {
+			return fmt.Errorf("failed to add path %q to BPF map: %w", path, err)
 		}
 		count++
 	}
 
-	log.Printf("Populated %d monitored paths in BPF map", count)
+	log.Printf("Populated BPF map with %d monitored paths from rules.yaml", count)
 	return nil
 }

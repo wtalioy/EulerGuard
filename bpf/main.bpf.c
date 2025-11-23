@@ -30,7 +30,7 @@ struct {
     __uint(max_entries, 256 * 1024);
 } events SEC(".maps");
 
-// Map to store monitored file paths (configured from userspace)
+// Map of monitored path prefixes (populated from rules.yaml)
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __uint(max_entries, 1024);
@@ -38,7 +38,7 @@ struct {
     __type(value, u8);
 } monitored_paths SEC(".maps");
 
-// Per-CPU array for temporary path buffer (avoids stack overflow)
+// Per-CPU buffer for path processing (avoids stack overflow)
 struct {
     __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
     __uint(max_entries, 1);
@@ -85,38 +85,40 @@ int handle_exec(struct trace_event_raw_sched_process_exec* ctx)
     return 0;
 }
 
-// Helper to check if path should be monitored
-static __always_inline bool should_monitor_path(char* path_buf)
+// Helper to check if path matches any monitored prefix from rules.yaml
+static __always_inline bool is_monitored_path(const char* userspace_path, char* path_buf)
 {
-    // Check for exact match in monitored_paths map
-    u8* value = bpf_map_lookup_elem(&monitored_paths, path_buf);
-    if (value && *value)
+    // Zero the buffer first (required for hash map key comparison)
+    // BPF hash maps compare the full 256 bytes, not just up to null terminator
+    __builtin_memset(path_buf, 0, PATH_MAX_LEN);
+
+    // Read the full path from userspace into our buffer
+    long ret = bpf_probe_read_user_str(path_buf, PATH_MAX_LEN, userspace_path);
+    if (ret <= 0)
+        return false;
+
+    // Try exact match first (for specific files like /etc/passwd)
+    u8* val = bpf_map_lookup_elem(&monitored_paths, path_buf);
+    if (val)
         return true;
 
-    // Check prefix matches at directory boundaries
-    // Simple approach: check common prefixes like /etc/, /home/, /root/
-    // The map lookup will handle the actual prefix matching
-
-    // For paths like /etc/passwd, check prefixes: /etc/, /etc, /
-    // Userspace populates the map with directory prefixes ending in '/'
-    for (int i = 1; i < 64 && i < PATH_MAX_LEN; i++) {
-        if (path_buf[i] == '\0')
-            break;
-
-        // At directory boundaries, check if this prefix is monitored
+// Try prefix matches by temporarily null-terminating at each '/'
+// For directory prefixes like /home/ or /etc/
+#pragma unroll
+    for (int i = 1; i < PATH_MAX_LEN - 1; i++) {
         if (path_buf[i] == '/') {
-            // Temporarily null-terminate at boundary
+            // Temporarily null-terminate at next position to create prefix
             char saved = path_buf[i + 1];
             path_buf[i + 1] = '\0';
 
-            u8* prefix_value = bpf_map_lookup_elem(&monitored_paths, path_buf);
+            val = bpf_map_lookup_elem(&monitored_paths, path_buf);
+            path_buf[i + 1] = saved; // Restore
 
-            // Restore the character
-            path_buf[i + 1] = saved;
-
-            if (prefix_value && *prefix_value)
+            if (val)
                 return true;
         }
+        if (path_buf[i] == '\0')
+            break;
     }
 
     return false;
@@ -133,37 +135,28 @@ int tracepoint_openat(struct trace_event_raw_sys_enter* ctx)
     // Get filename from syscall args (args[1] for openat)
     const char* filename = (const char*)ctx->args[1];
 
-    // Quick check before allocating event - only monitor absolute paths
-    char first_char;
-    bpf_probe_read_user(&first_char, 1, filename);
-    if (first_char != '/')
-        return 0;
-
-    // Get per-cpu buffer for path (avoids stack overflow)
+    // Get per-CPU path buffer
     u32 key = 0;
     char* path_buf = bpf_map_lookup_elem(&path_buffer, &key);
     if (!path_buf)
         return 0;
 
-    // Read filename from userspace into per-cpu buffer
-    long ret = bpf_probe_read_user_str(path_buf, PATH_MAX_LEN, filename);
-    if (ret <= 0)
+    // Check if path matches any monitored paths from rules.yaml
+    if (!is_monitored_path(filename, path_buf))
         return 0;
 
-    // Filter: only send events for monitored paths
-    if (!should_monitor_path(path_buf))
-        return 0;
-
+    // Allocate event from ring buffer
     event = bpf_ringbuf_reserve(&events, sizeof(*event), 0);
     if (!event)
         return 0;
 
+    // Fill event fields
     event->type = EVENT_TYPE_FILE_OPEN;
     event->pid = pid;
     event->cgroup_id = bpf_get_current_cgroup_id();
-    event->flags = (u32)ctx->args[2]; // flags argument
+    event->flags = (u32)ctx->args[2];
 
-    // Copy already-read filename to event
+    // Copy already-read path from buffer to event
     __builtin_memcpy(event->filename, path_buf, PATH_MAX_LEN);
 
     bpf_ringbuf_submit(event, 0);

@@ -7,10 +7,12 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"eulerguard/pkg/events"
 	"eulerguard/pkg/metrics"
+	"eulerguard/pkg/proctree"
 	"eulerguard/pkg/rules"
 )
 
@@ -142,6 +144,85 @@ func (p *Printer) PrintAlert(alert rules.Alert) {
 		alert.Event.Event.PID, alert.Event.Process,
 		alert.Event.Event.PPID, alert.Event.Parent,
 		alert.Event.Event.CgroupID)
+}
+
+func (p *Printer) PrintFileOpenAlert(ev *events.FileOpenEvent, chain []*proctree.ProcessInfo, rule *rules.Rule) {
+	filename := extractFilename(ev.Filename)
+	severityColor := getSeverityColor(rule.Severity)
+	resetColor := "\033[0m"
+
+	if p.jsonLines {
+		data := map[string]interface{}{
+			"type":        "file_access_alert",
+			"timestamp":   time.Now().UTC().Format(time.RFC3339),
+			"rule_name":   rule.Name,
+			"severity":    rule.Severity,
+			"description": rule.Description,
+			"pid":         ev.PID,
+			"filename":    filename,
+			"cgroup_id":   ev.CgroupID,
+			"flags":       ev.Flags,
+			"chain":       formatChainJSON(chain),
+		}
+		enc := json.NewEncoder(p.writer)
+		enc.SetEscapeHTML(false)
+		if err := enc.Encode(data); err != nil {
+			log.Printf("json encode file alert failed: %v", err)
+		}
+		return
+	}
+
+	// Terminal output with colors
+	fmt.Fprintf(os.Stdout, "%s[ALERT!] Rule '%s' triggered [Severity: %s]%s\n",
+		severityColor, rule.Name, rule.Severity, resetColor)
+	fmt.Fprintf(os.Stdout, "  Description: %s\n", rule.Description)
+	fmt.Fprintf(os.Stdout, "  File: %s\n", filename)
+	fmt.Fprintf(os.Stdout, "  PID: %d | Cgroup: %d | Flags: 0x%x\n", ev.PID, ev.CgroupID, ev.Flags)
+
+	if len(chain) > 0 {
+		fmt.Fprintf(os.Stdout, "  Attack Chain: %s\n", formatChain(chain))
+	}
+
+	// Log file (plain text)
+	fmt.Fprintf(p.logFile, "[ALERT!] Rule '%s' triggered [Severity: %s]\n", rule.Name, rule.Severity)
+	fmt.Fprintf(p.logFile, "  Description: %s\n", rule.Description)
+	fmt.Fprintf(p.logFile, "  File: %s\n", filename)
+	fmt.Fprintf(p.logFile, "  PID: %d | Cgroup: %d | Flags: 0x%x\n", ev.PID, ev.CgroupID, ev.Flags)
+	if len(chain) > 0 {
+		fmt.Fprintf(p.logFile, "  Attack Chain: %s\n", formatChain(chain))
+	}
+}
+
+func formatChain(chain []*proctree.ProcessInfo) string {
+	var parts []string
+	for i := len(chain) - 1; i >= 0; i-- {
+		info := chain[i]
+		parts = append(parts, fmt.Sprintf("%s(%d)", info.Comm, info.PID))
+	}
+	return strings.Join(parts, " -> ")
+}
+
+func formatChainJSON(chain []*proctree.ProcessInfo) []map[string]interface{} {
+	var result []map[string]interface{}
+	for i := len(chain) - 1; i >= 0; i-- {
+		info := chain[i]
+		result = append(result, map[string]interface{}{
+			"pid":       info.PID,
+			"ppid":      info.PPID,
+			"comm":      info.Comm,
+			"cgroup_id": info.CgroupID,
+		})
+	}
+	return result
+}
+
+func extractFilename(filename [256]byte) string {
+	for i, b := range filename {
+		if b == 0 {
+			return string(filename[:i])
+		}
+	}
+	return string(filename[:])
 }
 
 func getSeverityColor(severity string) string {

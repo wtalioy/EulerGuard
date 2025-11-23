@@ -18,6 +18,8 @@ type MatchCondition struct {
 	PID         uint32 `yaml:"pid,omitempty"`
 	PPID        uint32 `yaml:"ppid,omitempty"`
 	InContainer bool   `yaml:"in_container,omitempty"`
+	Filename    string `yaml:"filename,omitempty"`
+	FilePath    string `yaml:"file_path,omitempty"`
 }
 
 type RuleSet struct {

@@ -18,6 +18,18 @@ import (
 	"time"
 )
 
+// threadSafeWriter wraps an io.Writer with a mutex to make it thread-safe
+type threadSafeWriter struct {
+	mu     *sync.Mutex
+	writer io.Writer
+}
+
+func (w *threadSafeWriter) Write(p []byte) (n int, err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.writer.Write(p)
+}
+
 type Printer struct {
 	jsonLines  bool
 	meter      *metrics.RateMeter
@@ -27,6 +39,7 @@ type Printer struct {
 	flushTimer *time.Ticker
 	stopFlush  chan struct{}
 	closeOnce  sync.Once
+	mu         *sync.Mutex // Protects logWriter from concurrent access
 }
 
 func NewPrinter(jsonLines bool, meter *metrics.RateMeter, logPath string, bufferSize int) (*Printer, error) {
@@ -46,14 +59,25 @@ func NewPrinter(jsonLines bool, meter *metrics.RateMeter, logPath string, buffer
 	}
 	logWriter := bufio.NewWriterSize(f, bufferSize)
 
+	// Create mutex to protect logWriter from concurrent access
+	// This mutex will be shared between writes (via threadSafeWriter) and flushes
+	mu := &sync.Mutex{}
+
+	// Create thread-safe wrapper for logWriter to prevent race conditions
+	tsLogWriter := &threadSafeWriter{
+		mu:     mu,
+		writer: logWriter,
+	}
+
 	p := &Printer{
 		jsonLines:  jsonLines,
 		meter:      meter,
 		logFile:    f,
 		logWriter:  logWriter,
-		writer:     io.MultiWriter(os.Stdout, logWriter),
+		writer:     io.MultiWriter(os.Stdout, tsLogWriter),
 		flushTimer: time.NewTicker(1 * time.Second),
 		stopFlush:  make(chan struct{}),
+		mu:         mu, // Share the mutex for flush operations
 	}
 
 	// Start periodic flush goroutine
@@ -61,7 +85,11 @@ func NewPrinter(jsonLines bool, meter *metrics.RateMeter, logPath string, buffer
 		for {
 			select {
 			case <-p.flushTimer.C:
-				_ = logWriter.Flush()
+				p.mu.Lock()
+				if p.logWriter != nil {
+					_ = p.logWriter.Flush()
+				}
+				p.mu.Unlock()
 			case <-p.stopFlush:
 				return
 			}
@@ -85,11 +113,13 @@ func (p *Printer) Close() error {
 			close(p.stopFlush)
 		}
 
-		// Flush remaining data
+		// Flush remaining data (protected by mutex)
 		if p.logWriter != nil {
+			p.mu.Lock()
 			if err := p.logWriter.Flush(); err != nil {
 				log.Printf("Warning: failed to flush log buffer: %v", err)
 			}
+			p.mu.Unlock()
 		}
 
 		// Close file
@@ -174,8 +204,10 @@ func (p *Printer) PrintAlert(alert rules.Alert) {
 	resetColor := "\033[0m"
 	fmt.Fprintf(os.Stdout, "%s%s%s", severityColor, alertText, resetColor)
 
-	// Output to log file without colors
+	// Output to log file without colors (protected by mutex)
+	p.mu.Lock()
 	fmt.Fprint(p.logWriter, alertText)
+	p.mu.Unlock()
 }
 
 // formatAlertText creates the alert message text
@@ -218,8 +250,10 @@ func (p *Printer) PrintFileOpenAlert(ev *events.FileOpenEvent, chain []*proctree
 	resetColor := "\033[0m"
 	fmt.Fprintf(os.Stdout, "%s%s%s", severityColor, alertText, resetColor)
 
-	// Output to log file without colors
+	// Output to log file without colors (protected by mutex)
+	p.mu.Lock()
 	fmt.Fprint(p.logWriter, alertText)
+	p.mu.Unlock()
 }
 
 // formatFileAlertText creates the file alert message text

@@ -3,12 +3,15 @@ package ui
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -112,6 +115,160 @@ func registerAPI(mux *http.ServeMux, app *App) {
 			case <-ticker.C:
 				exec, file, net := app.Stats().Rates()
 				fmt.Fprintf(w, "data: {\"exec\":%d,\"file\":%d,\"network\":%d}\n\n", exec, file, net)
+				flusher.Flush()
+			}
+		}
+	})
+
+	// Get process ancestors for attack chain visualization
+	mux.HandleFunc("/api/ancestors/", func(w http.ResponseWriter, r *http.Request) {
+		setCORS(w)
+		w.Header().Set("Content-Type", "application/json")
+
+		// Extract PID from URL path
+		pidStr := strings.TrimPrefix(r.URL.Path, "/api/ancestors/")
+		pid, err := strconv.ParseUint(pidStr, 10, 32)
+		if err != nil {
+			http.Error(w, "Invalid PID", http.StatusBadRequest)
+			return
+		}
+
+		ancestors := app.GetAncestors(uint32(pid))
+		if ancestors == nil {
+			w.Write([]byte("[]"))
+			return
+		}
+
+		data, _ := json.Marshal(ancestors)
+		w.Write(data)
+	})
+
+	// Get all detection rules
+	mux.HandleFunc("/api/rules", func(w http.ResponseWriter, r *http.Request) {
+		setCORS(w)
+		w.Header().Set("Content-Type", "application/json")
+
+		rules := app.GetRules()
+		data, _ := json.Marshal(rules)
+		w.Write(data)
+	})
+
+	// Learning mode status
+	mux.HandleFunc("/api/learning/status", func(w http.ResponseWriter, r *http.Request) {
+		setCORS(w)
+		w.Header().Set("Content-Type", "application/json")
+
+		status := app.GetLearningStatus()
+		data, _ := json.Marshal(status)
+		w.Write(data)
+	})
+
+	// Start learning mode
+	mux.HandleFunc("/api/learning/start", func(w http.ResponseWriter, r *http.Request) {
+		setCORS(w)
+		if r.Method == "OPTIONS" {
+			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			return
+		}
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req struct {
+			Duration int `json:"duration"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if err := app.StartLearning(req.Duration); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Stop learning mode
+	mux.HandleFunc("/api/learning/stop", func(w http.ResponseWriter, r *http.Request) {
+		setCORS(w)
+		if r.Method == "OPTIONS" {
+			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			return
+		}
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		rules, err := app.StopLearning()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		data, _ := json.Marshal(rules)
+		w.Write(data)
+	})
+
+	// Apply whitelist rules
+	mux.HandleFunc("/api/learning/apply", func(w http.ResponseWriter, r *http.Request) {
+		setCORS(w)
+		if r.Method == "OPTIONS" {
+			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			return
+		}
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req struct {
+			Indices []int `json:"indices"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if err := app.ApplyWhitelistRules(req.Indices); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// SSE stream for all events (LiveStream page)
+	mux.HandleFunc("/api/stream", func(w http.ResponseWriter, r *http.Request) {
+		setCORS(w)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "SSE not supported", http.StatusInternalServerError)
+			return
+		}
+
+		// Subscribe to events from the bridge
+		events := make(chan any, 100)
+		app.Stats().SubscribeEvents(events)
+		defer app.Stats().UnsubscribeEvents(events)
+
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case event := <-events:
+				data, _ := json.Marshal(event)
+				fmt.Fprintf(w, "data: %s\n\n", data)
 				flusher.Flush()
 			}
 		}

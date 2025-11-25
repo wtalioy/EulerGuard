@@ -30,6 +30,10 @@ type Stats struct {
 	containersMu sync.RWMutex
 
 	onRateUpdate func(exec, file, net int64)
+
+	// Event subscribers for SSE streaming
+	eventSubs   map[chan any]struct{}
+	eventSubsMu sync.RWMutex
 }
 
 func NewStats() *Stats {
@@ -37,6 +41,7 @@ func NewStats() *Stats {
 		alerts:     make([]FrontendAlert, 0, 100),
 		maxAlerts:  100,
 		containers: make(map[string]struct{}),
+		eventSubs:  make(map[chan any]struct{}),
 	}
 	go s.rateLoop()
 	return s
@@ -151,5 +156,33 @@ func ConnectToFrontend(ev events.ConnectEvent, addr string) FrontendConnectEvent
 		Port:        ev.Port,
 		Addr:        addr,
 		InContainer: ev.CgroupID > 1,
+	}
+}
+
+// SubscribeEvents adds a subscriber channel for SSE streaming
+func (s *Stats) SubscribeEvents(ch chan any) {
+	s.eventSubsMu.Lock()
+	s.eventSubs[ch] = struct{}{}
+	s.eventSubsMu.Unlock()
+}
+
+// UnsubscribeEvents removes a subscriber channel
+func (s *Stats) UnsubscribeEvents(ch chan any) {
+	s.eventSubsMu.Lock()
+	delete(s.eventSubs, ch)
+	s.eventSubsMu.Unlock()
+}
+
+// PublishEvent sends an event to all subscribers
+func (s *Stats) PublishEvent(event any) {
+	s.eventSubsMu.RLock()
+	defer s.eventSubsMu.RUnlock()
+
+	for ch := range s.eventSubs {
+		select {
+		case ch <- event:
+		default:
+			// Channel full, skip this subscriber
+		}
 	}
 }

@@ -67,7 +67,9 @@ func (b *Bridge) emit(name string, data any) {
 
 func (b *Bridge) HandleExec(ev events.ExecEvent) {
 	b.stats.RecordExec(ev)
-	b.emit("event:exec", ExecToFrontend(ev))
+	frontendEvent := ExecToFrontend(ev)
+	b.emit("event:exec", frontendEvent)
+	b.stats.PublishEvent(frontendEvent)
 
 	b.mu.RLock()
 	re := b.ruleEngine
@@ -105,7 +107,9 @@ func (b *Bridge) HandleExec(ev events.ExecEvent) {
 
 func (b *Bridge) HandleFileOpen(ev events.FileOpenEvent, filename string) {
 	b.stats.RecordFile()
-	b.emit("event:file", FileToFrontend(ev, filename))
+	frontendEvent := FileToFrontend(ev, filename)
+	b.emit("event:file", frontendEvent)
+	b.stats.PublishEvent(frontendEvent)
 
 	b.mu.RLock()
 	re, pt := b.ruleEngine, b.processTree
@@ -142,7 +146,9 @@ func (b *Bridge) HandleFileOpen(ev events.FileOpenEvent, filename string) {
 
 func (b *Bridge) HandleConnect(ev events.ConnectEvent) {
 	b.stats.RecordConnect()
-	b.emit("event:connect", ConnectToFrontend(ev, formatAddr(ev)))
+	frontendEvent := ConnectToFrontend(ev, formatAddr(ev))
+	b.emit("event:connect", frontendEvent)
+	b.stats.PublishEvent(frontendEvent)
 
 	b.mu.RLock()
 	re, pt := b.ruleEngine, b.processTree

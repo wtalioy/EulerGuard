@@ -82,3 +82,14 @@ type LearningStatusDTO struct {
 	ConnectCount     int   `json:"connectCount"`
 	RemainingSeconds int   `json:"remainingSeconds"`
 }
+
+// DetectionRuleDTO represents a loaded detection rule for the frontend
+type DetectionRuleDTO struct {
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Severity    string            `json:"severity"`
+	Action      string            `json:"action"`
+	Type        string            `json:"type"` // "exec", "file", "connect"
+	Match       map[string]string `json:"match"`
+	YAML        string            `json:"yaml"`
+}

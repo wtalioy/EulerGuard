@@ -20,7 +20,7 @@ body {
   color: var(--text-primary);
   line-height: 1.5;
   min-height: 100vh;
-  overflow: hidden;
+  overflow: auto;
 }
 
 #app {
@@ -103,4 +103,3 @@ pre {
 .text-info {
   color: var(--status-info);
 }
-

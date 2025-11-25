@@ -34,6 +34,71 @@ export interface ProcessInfo {
     timestamp: number
 }
 
+// Event types for LiveStream
+export interface ExecEvent {
+    type: 'exec'
+    timestamp: number
+    pid: number
+    ppid: number
+    cgroupId: string
+    comm: string
+    parentComm: string
+    inContainer: boolean
+}
+
+export interface ConnectEvent {
+    type: 'connect'
+    timestamp: number
+    pid: number
+    cgroupId: string
+    family: number
+    port: number
+    addr: string
+    inContainer: boolean
+}
+
+export interface FileEvent {
+    type: 'file'
+    timestamp: number
+    pid: number
+    cgroupId: string
+    flags: number
+    filename: string
+    inContainer: boolean
+}
+
+export type StreamEvent = ExecEvent | ConnectEvent | FileEvent
+
+// Detection rule types
+export interface DetectionRule {
+    name: string
+    description: string
+    severity: string
+    action: string
+    type: 'exec' | 'file' | 'connect'
+    match: Record<string, string>
+    yaml: string
+}
+
+// Learning status for profiler
+export interface LearningStatus {
+    active: boolean
+    startTime: number
+    duration: number
+    patternCount: number
+    remainingSeconds: number
+}
+
+// Generated rule from learning
+export interface GeneratedRule {
+    name: string
+    description: string
+    severity: string
+    action: string
+    yaml: string
+    selected: boolean
+}
+
 type EventCallback<T> = (data: T) => void
 type UnsubscribeFn = () => void
 
@@ -67,6 +132,62 @@ export async function getAncestors(pid: number): Promise<ProcessInfo[]> {
     }
     const resp = await fetch(`/api/ancestors/${pid}`)
     return resp.json()
+}
+
+// Get all detection rules
+export async function getRules(): Promise<DetectionRule[]> {
+    if (isWailsMode) {
+        const module = await import('../../wailsjs/go/gui/App') as any
+        if (typeof module.GetRules === 'function') {
+            return module.GetRules()
+        }
+        return []
+    }
+    const resp = await fetch('/api/rules')
+    return resp.json()
+}
+
+// Profiler / Learning Mode APIs
+export async function getLearningStatus(): Promise<LearningStatus> {
+    if (isWailsMode) {
+        const { GetLearningStatus } = await import('../../wailsjs/go/gui/App')
+        return GetLearningStatus()
+    }
+    const resp = await fetch('/api/learning/status')
+    return resp.json()
+}
+
+export async function startLearning(durationSec: number): Promise<void> {
+    if (isWailsMode) {
+        const { StartLearning } = await import('../../wailsjs/go/gui/App')
+        return StartLearning(durationSec)
+    }
+    await fetch('/api/learning/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ duration: durationSec })
+    })
+}
+
+export async function stopLearning(): Promise<GeneratedRule[]> {
+    if (isWailsMode) {
+        const { StopLearning } = await import('../../wailsjs/go/gui/App')
+        return StopLearning()
+    }
+    const resp = await fetch('/api/learning/stop', { method: 'POST' })
+    return resp.json()
+}
+
+export async function applyWhitelistRules(ruleIndices: number[]): Promise<void> {
+    if (isWailsMode) {
+        const { ApplyWhitelistRules } = await import('../../wailsjs/go/gui/App')
+        return ApplyWhitelistRules(ruleIndices)
+    }
+    await fetch('/api/learning/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ indices: ruleIndices })
+    })
 }
 
 export function subscribeToEventRates(callback: EventCallback<EventRates>): UnsubscribeFn {
@@ -133,4 +254,38 @@ export function subscribeToAlerts(callback: EventCallback<Alert[]>): Unsubscribe
             alertPollingInterval = null
         }
     }
+}
+
+// Subscribe to all events for LiveStream
+export function subscribeToAllEvents(callback: EventCallback<StreamEvent>): UnsubscribeFn {
+    if (isWailsMode) {
+        const cleanups: (() => void)[] = []
+
+        import('../../wailsjs/runtime/runtime').then(({ EventsOn, EventsOff }) => {
+            EventsOn('event:exec', (data: ExecEvent) => callback({ ...data, type: 'exec' }))
+            EventsOn('event:connect', (data: ConnectEvent) => callback({ ...data, type: 'connect' }))
+            EventsOn('event:file', (data: FileEvent) => callback({ ...data, type: 'file' }))
+            
+            cleanups.push(
+                () => EventsOff('event:exec'),
+                () => EventsOff('event:connect'),
+                () => EventsOff('event:file')
+            )
+        })
+
+        return () => cleanups.forEach(fn => fn())
+    }
+
+    // Web mode: use SSE for all events
+    const eventSource = new EventSource('/api/stream')
+
+    eventSource.onmessage = (event) => {
+        try {
+            callback(JSON.parse(event.data))
+        } catch (e) {
+            console.error('Failed to parse SSE event:', e)
+        }
+    }
+
+    return () => eventSource.close()
 }

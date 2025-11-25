@@ -135,3 +135,61 @@ func (a *App) GetProbeInfo() []map[string]string {
 		{"id": "connect", "name": "Network Connection", "tracepoint": "tp/syscalls/sys_enter_connect"},
 	}
 }
+
+// GetRules returns all loaded detection rules
+func (a *App) GetRules() []DetectionRuleDTO {
+	if a.ruleEngine == nil {
+		return []DetectionRuleDTO{}
+	}
+
+	rules := a.ruleEngine.GetRules()
+	result := make([]DetectionRuleDTO, len(rules))
+
+	for i, rule := range rules {
+		// Determine rule type based on match conditions
+		ruleType := "exec"
+		if rule.Match.Filename != "" || rule.Match.FilePath != "" {
+			ruleType = "file"
+		} else if rule.Match.DestPort != 0 || rule.Match.DestIP != "" {
+			ruleType = "connect"
+		}
+
+		// Build match conditions map
+		matchMap := make(map[string]string)
+		if rule.Match.ProcessName != "" {
+			matchMap["process_name"] = rule.Match.ProcessName
+		}
+		if rule.Match.ParentName != "" {
+			matchMap["parent_name"] = rule.Match.ParentName
+		}
+		if rule.Match.Filename != "" {
+			matchMap["filename"] = rule.Match.Filename
+		}
+		if rule.Match.FilePath != "" {
+			matchMap["file_path"] = rule.Match.FilePath
+		}
+		if rule.Match.DestPort != 0 {
+			matchMap["dest_port"] = fmt.Sprintf("%d", rule.Match.DestPort)
+		}
+		if rule.Match.DestIP != "" {
+			matchMap["dest_ip"] = rule.Match.DestIP
+		}
+		if rule.Match.InContainer {
+			matchMap["in_container"] = "true"
+		}
+
+		yamlBytes, _ := yaml.Marshal(rule)
+
+		result[i] = DetectionRuleDTO{
+			Name:        rule.Name,
+			Description: rule.Description,
+			Severity:    rule.Severity,
+			Action:      rule.Action,
+			Type:        ruleType,
+			Match:       matchMap,
+			YAML:        string(yamlBytes),
+		}
+	}
+
+	return result
+}

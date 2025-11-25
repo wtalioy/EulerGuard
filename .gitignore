@@ -1,8 +1,11 @@
 # Build artifacts
 build/
-
-# eBPF build artifacts
 bpf/vmlinux.h
-
-*.log
 *.o
+
+# Logs
+*.log
+
+# Frontend
+node_modules/
+dist/

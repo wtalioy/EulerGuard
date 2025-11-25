@@ -197,6 +197,10 @@ func (pt *ProcessTree) GetProcess(pid uint32) (*ProcessInfo, bool) {
 	return val.(*ProcessInfo), true
 }
 
+func (pt *ProcessTree) Size() int {
+	return int(pt.size.Load())
+}
+
 func (pt *ProcessTree) GetAncestors(pid uint32) []*ProcessInfo {
 	chain := make([]*ProcessInfo, 0, pt.maxChainLength)
 	visited := make(map[uint32]bool)

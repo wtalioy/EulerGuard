@@ -1,6 +1,7 @@
 package config
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,6 +35,10 @@ type Options struct {
 	LearnMode       bool          `yaml:"learn_mode"`
 	LearnDuration   time.Duration `yaml:"learn_duration"`
 	LearnOutputPath string        `yaml:"learn_output_path"`
+
+	// Web GUI mode (command line only)
+	WebMode bool `yaml:"-"`
+	WebPort int  `yaml:"-"`
 }
 
 func ParseOptions() Options {
@@ -115,6 +120,12 @@ func ParseOptions() Options {
 	if v, ok := raw["learn_output_path"].(string); ok && v != "" {
 		opts.LearnOutputPath = v
 	}
+
+	// Parse command line flags (override config file)
+	flag.BoolVar(&opts.WebMode, "web", false, "Launch web GUI (accessible via browser)")
+	flag.IntVar(&opts.WebPort, "port", 3000, "Port for web GUI (default: 3000)")
+	flag.BoolVar(&opts.LearnMode, "learn", opts.LearnMode, "Enable learning mode")
+	flag.Parse()
 
 	return opts
 }

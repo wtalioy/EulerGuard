@@ -26,6 +26,14 @@ export interface EventRates {
     file: number
 }
 
+export interface ProcessInfo {
+    pid: number
+    ppid: number
+    comm: string
+    cgroupId: string
+    timestamp: number
+}
+
 type EventCallback<T> = (data: T) => void
 type UnsubscribeFn = () => void
 
@@ -48,6 +56,16 @@ export async function getAlerts(): Promise<Alert[]> {
         return GetAlerts()
     }
     const resp = await fetch('/api/alerts')
+    return resp.json()
+}
+
+// Get process ancestors chain for attack chain visualization
+export async function getAncestors(pid: number): Promise<ProcessInfo[]> {
+    if (isWailsMode) {
+        const { GetAncestors } = await import('../../wailsjs/go/gui/App')
+        return GetAncestors(pid)
+    }
+    const resp = await fetch(`/api/ancestors/${pid}`)
     return resp.json()
 }
 

@@ -7,6 +7,13 @@ export function useAlerts() {
   const alerts = ref<Alert[]>([])
   const newAlertCount = ref(0)
 
+  // Cumulative severity counters
+  const severityCounts = ref({
+    high: 0,
+    warning: 0,
+    info: 0
+  })
+
   let unsubscribe: (() => void) | null = null
   let lastAlertIds = new Set<string>()
 
@@ -14,6 +21,26 @@ export function useAlerts() {
     try {
       const result = await getAlerts()
       alerts.value = result || []
+
+      // Initialize severity counts based on existing alerts
+      severityCounts.value = {
+        high: 0,
+        warning: 0,
+        info: 0
+      }
+      for (const alert of alerts.value) {
+        switch (alert.severity) {
+          case 'high':
+            severityCounts.value.high++
+            break
+          case 'warning':
+            severityCounts.value.warning++
+            break
+          case 'info':
+            severityCounts.value.info++
+            break
+        }
+      }
     } catch (e) {
       console.error('Failed to fetch alerts:', e)
     }
@@ -21,12 +48,27 @@ export function useAlerts() {
 
   const handleAlertsUpdate = (newAlerts: Alert[]) => {
     const newIds = new Set(newAlerts.map(a => a.id))
-    const addedCount = newAlerts.filter(a => !lastAlertIds.has(a.id)).length
-    
-    if (addedCount > 0) {
-      newAlertCount.value += addedCount
+    const addedAlerts = newAlerts.filter(a => !lastAlertIds.has(a.id))
+
+    if (addedAlerts.length > 0) {
+      newAlertCount.value += addedAlerts.length
+
+      // Update cumulative severity counts
+      for (const alert of addedAlerts) {
+        switch (alert.severity) {
+          case 'high':
+            severityCounts.value.high++
+            break
+          case 'warning':
+            severityCounts.value.warning++
+            break
+          case 'info':
+            severityCounts.value.info++
+            break
+        }
+      }
     }
-    
+
     alerts.value = newAlerts.slice(0, 100)
     lastAlertIds = newIds
   }
@@ -36,10 +78,11 @@ export function useAlerts() {
   }
 
   const getAlertsBySeverity = () => {
-    const high = alerts.value.filter(a => a.severity === 'high').length
-    const warning = alerts.value.filter(a => a.severity === 'warning').length
-    const info = alerts.value.filter(a => a.severity === 'info').length
-    return { high, warning, info }
+    return {
+      high: severityCounts.value.high,
+      warning: severityCounts.value.warning,
+      info: severityCounts.value.info
+    }
   }
 
   onMounted(async () => {

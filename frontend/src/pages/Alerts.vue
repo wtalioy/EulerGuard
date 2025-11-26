@@ -180,7 +180,7 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
 
 <style scoped>
 .alerts-page {
-  height: 100%;
+  height: calc(100vh - var(--topbar-height) - var(--footer-height) - 48px); /* viewport - topbar - footer - padding */
   display: flex;
   flex-direction: column;
   gap: 20px;

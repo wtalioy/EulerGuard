@@ -153,7 +153,7 @@ onUnmounted(() => {
 
 <style scoped>
 .live-stream {
-  height: 100%;
+  height: calc(100vh - var(--topbar-height) - var(--footer-height) - 48px);
   display: flex;
   flex-direction: column;
   gap: 20px;

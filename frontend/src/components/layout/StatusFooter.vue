@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { Cpu, HardDrive, Activity, Box } from 'lucide-vue-next'
+import { HardDrive, Activity, Box } from 'lucide-vue-next'
 import { getSystemStats } from '../../lib/api'
 
 interface SystemStats {
@@ -9,8 +9,6 @@ interface SystemStats {
   eventsPerSec: number
   alertCount: number
   probeStatus: string
-  cpuPercent: number
-  memoryMB: number
 }
 
 const stats = ref<SystemStats>({
@@ -18,9 +16,7 @@ const stats = ref<SystemStats>({
   containerCount: 0,
   eventsPerSec: 0,
   alertCount: 0,
-  probeStatus: 'starting',
-  cpuPercent: 0,
-  memoryMB: 0
+  probeStatus: 'starting'
 })
 
 let pollInterval: number | null = null
@@ -70,18 +66,6 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div class="footer-right">
-      <div class="footer-item">
-        <Cpu :size="14" class="footer-icon" />
-        <span class="footer-label">CPU:</span>
-        <span class="footer-value">{{ stats.cpuPercent.toFixed(1) }}%</span>
-      </div>
-      <div class="footer-divider"></div>
-      <div class="footer-item">
-        <span class="footer-label">Mem:</span>
-        <span class="footer-value">{{ stats.memoryMB.toFixed(0) }}MB</span>
-      </div>
-    </div>
   </footer>
 </template>
 
@@ -97,8 +81,7 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-.footer-left,
-.footer-right {
+.footer-left {
   display: flex;
   align-items: center;
   gap: 12px;

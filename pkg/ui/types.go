@@ -51,8 +51,6 @@ type SystemStatsDTO struct {
 	EventsPerSec   float64 `json:"eventsPerSec"`
 	AlertCount     int     `json:"alertCount"`
 	ProbeStatus    string  `json:"probeStatus"` // "active", "error", "starting"
-	CPUPercent     float64 `json:"cpuPercent"`
-	MemoryMB       float64 `json:"memoryMB"`
 }
 
 type ProcessInfoDTO struct {

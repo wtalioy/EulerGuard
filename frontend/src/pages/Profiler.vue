@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { Brain, Play, Clock, CheckCircle } from 'lucide-vue-next'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { Brain, Play, CheckCircle } from 'lucide-vue-next'
 import LearningTimer from '../components/profiler/LearningTimer.vue'
 import LiveCapture from '../components/profiler/LiveCapture.vue'
 import RuleReview from '../components/profiler/RuleReview.vue'
@@ -13,11 +13,10 @@ import {
   type GeneratedRule
 } from '../lib/api'
 
-// State machine states
 type ProfilerState = 'idle' | 'learning' | 'reviewing'
 
 const state = ref<ProfilerState>('idle')
-const learningDuration = ref(300) // 5 minutes default
+const learningDuration = ref(300)
 const learningStatus = ref<LearningStatus>({
   active: false,
   startTime: 0,
@@ -28,19 +27,18 @@ const learningStatus = ref<LearningStatus>({
 const generatedRules = ref<GeneratedRule[]>([])
 const applying = ref(false)
 const error = ref<string | null>(null)
+const success = ref<string | null>(null)
 
 let statusPollInterval: number | null = null
 
-// Computed
 const durationOptions = [
+  { value: 30, label: '30 seconds' },
   { value: 60, label: '1 minute' },
   { value: 180, label: '3 minutes' },
   { value: 300, label: '5 minutes' },
   { value: 600, label: '10 minutes' },
-  { value: 900, label: '15 minutes' },
 ]
 
-// Actions
 const handleStartLearning = async () => {
   error.value = null
   try {
@@ -67,11 +65,16 @@ const handleStopLearning = async () => {
 
 const handleApplyRules = async (selectedIndices: number[]) => {
   error.value = null
+  success.value = null
   applying.value = true
   try {
     await applyWhitelistRules(selectedIndices)
+    success.value = `Successfully saved ${selectedIndices.length} rules to whitelist_rules.yaml`
     state.value = 'idle'
     generatedRules.value = []
+    setTimeout(() => {
+      success.value = null
+    }, 5000)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to apply rules'
   } finally {
@@ -84,13 +87,11 @@ const handleCancel = () => {
   generatedRules.value = []
 }
 
-// Status polling
 const pollStatus = async () => {
   try {
     const status = await getLearningStatus()
     learningStatus.value = status
     
-    // Check if learning completed
     if (!status.active && state.value === 'learning') {
       handleStopLearning()
     }
@@ -111,9 +112,7 @@ const stopStatusPolling = () => {
   }
 }
 
-// Lifecycle
 onMounted(async () => {
-  // Check if learning is already active
   try {
     const status = await getLearningStatus()
     if (status.active) {
@@ -122,7 +121,6 @@ onMounted(async () => {
       startStatusPolling()
     }
   } catch (e) {
-    // Ignore
   }
 })
 
@@ -156,6 +154,13 @@ onUnmounted(() => {
     <div v-if="error" class="error-banner">
       {{ error }}
       <button @click="error = null">&times;</button>
+    </div>
+
+    <!-- Success Banner -->
+    <div v-if="success" class="success-banner">
+      <CheckCircle :size="16" />
+      {{ success }}
+      <button @click="success = null">&times;</button>
     </div>
 
     <!-- IDLE State -->
@@ -331,6 +336,29 @@ onUnmounted(() => {
   font-size: 18px;
   cursor: pointer;
   padding: 0 4px;
+}
+
+/* Success Banner */
+.success-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--status-safe-dim);
+  border: 1px solid var(--status-safe);
+  border-radius: var(--radius-md);
+  color: var(--status-safe);
+  font-size: 13px;
+}
+
+.success-banner button {
+  background: none;
+  border: none;
+  color: var(--status-safe);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  margin-left: auto;
 }
 
 /* IDLE State */

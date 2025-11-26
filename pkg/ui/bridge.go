@@ -10,6 +10,7 @@ import (
 
 	"eulerguard/pkg/events"
 	"eulerguard/pkg/proctree"
+	"eulerguard/pkg/profiler"
 	"eulerguard/pkg/rules"
 	"eulerguard/pkg/utils"
 )
@@ -18,6 +19,7 @@ type EventEmitter interface {
 	Emit(eventName string, data any)
 }
 type NoopEmitter struct{}
+
 func (n *NoopEmitter) Emit(string, any) {}
 
 type Bridge struct {
@@ -25,6 +27,7 @@ type Bridge struct {
 	stats       *Stats
 	processTree *proctree.ProcessTree
 	ruleEngine  *rules.Engine
+	profiler    *profiler.Profiler
 	mu          sync.RWMutex
 }
 
@@ -56,6 +59,12 @@ func (b *Bridge) SetRuleEngine(pt *proctree.ProcessTree, re *rules.Engine) {
 	b.ruleEngine = re
 }
 
+func (b *Bridge) SetProfiler(p *profiler.Profiler) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.profiler = p
+}
+
 func (b *Bridge) emit(name string, data any) {
 	b.mu.RLock()
 	e := b.emitter
@@ -73,7 +82,13 @@ func (b *Bridge) HandleExec(ev events.ExecEvent) {
 
 	b.mu.RLock()
 	re := b.ruleEngine
+	prof := b.profiler
 	b.mu.RUnlock()
+
+	// Forward to profiler if active
+	if prof != nil && prof.IsActive() {
+		prof.HandleExec(ev)
+	}
 
 	if re == nil {
 		return
@@ -113,7 +128,13 @@ func (b *Bridge) HandleFileOpen(ev events.FileOpenEvent, filename string) {
 
 	b.mu.RLock()
 	re, pt := b.ruleEngine, b.processTree
+	prof := b.profiler
 	b.mu.RUnlock()
+
+	// Forward to profiler if active
+	if prof != nil && prof.IsActive() {
+		prof.HandleFileOpen(ev, filename)
+	}
 
 	if re == nil {
 		return
@@ -152,7 +173,13 @@ func (b *Bridge) HandleConnect(ev events.ConnectEvent) {
 
 	b.mu.RLock()
 	re, pt := b.ruleEngine, b.processTree
+	prof := b.profiler
 	b.mu.RUnlock()
+
+	// Forward to profiler if active
+	if prof != nil && prof.IsActive() {
+		prof.HandleConnect(ev)
+	}
 
 	if re == nil {
 		return

@@ -162,11 +162,15 @@ export async function startLearning(durationSec: number): Promise<void> {
         const { StartLearning } = await import('../../wailsjs/go/gui/App')
         return StartLearning(durationSec)
     }
-    await fetch('/api/learning/start', {
+    const resp = await fetch('/api/learning/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ duration: durationSec })
     })
+    if (!resp.ok) {
+        const text = await resp.text()
+        throw new Error(text || 'Failed to start learning')
+    }
 }
 
 export async function stopLearning(): Promise<GeneratedRule[]> {
@@ -175,6 +179,10 @@ export async function stopLearning(): Promise<GeneratedRule[]> {
         return StopLearning()
     }
     const resp = await fetch('/api/learning/stop', { method: 'POST' })
+    if (!resp.ok) {
+        const text = await resp.text()
+        throw new Error(text || 'Failed to stop learning')
+    }
     return resp.json()
 }
 
@@ -183,11 +191,15 @@ export async function applyWhitelistRules(ruleIndices: number[]): Promise<void> 
         const { ApplyWhitelistRules } = await import('../../wailsjs/go/gui/App')
         return ApplyWhitelistRules(ruleIndices)
     }
-    await fetch('/api/learning/apply', {
+    const resp = await fetch('/api/learning/apply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ indices: ruleIndices })
     })
+    if (!resp.ok) {
+        const text = await resp.text()
+        throw new Error(text || 'Failed to apply rules')
+    }
 }
 
 export function subscribeToEventRates(callback: EventCallback<EventRates>): UnsubscribeFn {
@@ -265,7 +277,7 @@ export function subscribeToAllEvents(callback: EventCallback<StreamEvent>): Unsu
             EventsOn('event:exec', (data: ExecEvent) => callback({ ...data, type: 'exec' }))
             EventsOn('event:connect', (data: ConnectEvent) => callback({ ...data, type: 'connect' }))
             EventsOn('event:file', (data: FileEvent) => callback({ ...data, type: 'file' }))
-            
+
             cleanups.push(
                 () => EventsOff('event:exec'),
                 () => EventsOff('event:connect'),

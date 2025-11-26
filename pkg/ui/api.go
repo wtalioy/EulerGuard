@@ -85,6 +85,9 @@ func (a *App) StartLearning(durationSec int) error {
 	a.learning.startTime = time.Now()
 	a.learning.duration = time.Duration(durationSec) * time.Second
 
+	// Set profiler on bridge so it receives events
+	a.bridge.SetProfiler(a.profiler)
+
 	go func() {
 		time.Sleep(a.learning.duration)
 		if a.learning.active {
@@ -97,12 +100,19 @@ func (a *App) StartLearning(durationSec int) error {
 }
 
 func (a *App) StopLearning() ([]RuleDTO, error) {
-	if !a.learning.active || a.profiler == nil {
-		return nil, fmt.Errorf("learning mode not active")
+	// Handle case where learning timed out but profiler still has data
+	if a.profiler == nil {
+		return nil, fmt.Errorf("no profiler data available")
 	}
 
-	a.profiler.Stop()
-	a.learning.active = false
+	// Stop the profiler if still active
+	if a.learning.active {
+		a.profiler.Stop()
+		a.learning.active = false
+	}
+
+	// Clear profiler from bridge
+	a.bridge.SetProfiler(nil)
 
 	rules := a.profiler.GenerateRules()
 	result := make([]RuleDTO, len(rules))

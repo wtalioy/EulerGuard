@@ -337,10 +337,6 @@ onUnmounted(() => {
           <span class="stat-number">{{ totalEventsPerSec }}</span>
           <span class="stat-label">Events/sec</span>
         </div>
-        <div class="legend-stat">
-          <span class="stat-number">{{ recentProcesses.length }}</span>
-          <span class="stat-label">In Queue</span>
-        </div>
       </div>
       <div class="legend-items">
         <div class="legend-item process">

@@ -51,9 +51,11 @@ run-web: web
 	@sudo $(BUILD)/eulerguard-web
 
 run-wails: wails
-	@sudo $(BUILD)/eulerguard-gui
+	@echo "Starting EulerGuard GUI..."
+	@xhost +local:root 2>/dev/null || true
+	@sudo -E DISPLAY=$(DISPLAY) XAUTHORITY=$(XAUTHORITY) $(BUILD)/eulerguard-gui
 
-# Clean
+# 
 clean:
 	@rm -f $(BPF_OBJ) $(BUILD)/eulerguard $(BUILD)/eulerguard-web $(BUILD)/eulerguard-gui
 	@rm -rf $(BUILD)/bin cmd/frontend cmd/build

@@ -124,15 +124,11 @@ onMounted(() => {
   <div class="workloads-page">
     <div class="page-header">
       <div class="header-content">
-        <div class="header-title">
-          <div class="title-icon">
-            <Boxes :size="22" />
-          </div>
-          <div>
-            <h1 class="page-title">Workloads</h1>
-            <span class="page-subtitle">Active cgroup-based workload groups</span>
-          </div>
-        </div>
+        <h1 class="page-title">
+          <Boxes :size="24" class="title-icon" />
+          Workloads
+        </h1>
+        <span class="page-subtitle">Active cgroup-based workload groups</span>
       </div>
       <button class="refresh-btn" @click="fetchWorkloads" :disabled="loading">
         <RefreshCw :size="16" :class="{ spinning: loading }" />
@@ -353,28 +349,24 @@ onMounted(() => {
   justify-content: space-between;
 }
 
-.header-title {
+.header-content {
   display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.title-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  background: linear-gradient(135deg, var(--accent-primary), #3b82f6);
-  border-radius: var(--radius-md);
-  color: #fff;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .page-title {
-  font-size: 22px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 24px;
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
+}
+
+.title-icon {
+  color: var(--accent-primary);
 }
 
 .page-subtitle {

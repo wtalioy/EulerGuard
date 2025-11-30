@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { Shield, ShieldOff, AlertTriangle, Filter, Search, X } from 'lucide-vue-next'
+import { Radar, ShieldOff, AlertTriangle, Filter, Search, X } from 'lucide-vue-next'
 import AlertCard from '../components/alerts/AlertCard.vue'
 import AttackChain from '../components/topology/AttackChain.vue'
 import { useAlerts } from '../composables/useAlerts'
@@ -121,7 +121,7 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
     <div class="page-header">
       <div class="header-content">
         <h1 class="page-title">
-          <Shield :size="24" class="title-icon" />
+          <Radar :size="24" class="title-icon" />
           Security Events
         </h1>
         <span class="page-subtitle">Real-time threat detection and active defense monitoring</span>

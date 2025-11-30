@@ -109,15 +109,11 @@ onUnmounted(() => {
     <!-- Header -->
     <div class="page-header">
       <div class="header-content">
-        <div class="header-title">
-          <div class="title-icon">
-            <FileCode :size="22" />
-          </div>
-          <div>
-            <h1 class="page-title">Security Rules</h1>
-            <span class="page-subtitle">LSM enforcement and detection rules</span>
-          </div>
-        </div>
+        <h1 class="page-title">
+          <FileCode :size="24" class="title-icon" />
+          Security Rules
+        </h1>
+        <span class="page-subtitle">LSM enforcement and detection rules</span>
       </div>
       
       <!-- Action Stats -->
@@ -293,28 +289,24 @@ onUnmounted(() => {
   gap: 20px;
 }
 
-.header-title {
+.header-content {
   display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.title-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  background: linear-gradient(135deg, var(--accent-primary), #3b82f6);
-  border-radius: var(--radius-md);
-  color: #fff;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .page-title {
-  font-size: 22px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 24px;
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
+}
+
+.title-icon {
+  color: var(--accent-primary);
 }
 
 .page-subtitle {

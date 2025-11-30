@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 import {
   LayoutDashboard,
   Radio,
-  AlertTriangle,
+  Radar,
   FileCode,
   Boxes,
   Brain,
@@ -26,10 +26,10 @@ const route = useRoute()
 const navItems: NavItem[] = [
   { icon: LayoutDashboard, label: 'Dashboard', route: '/', section: 'guard' },
   { icon: Radio, label: 'Live Stream', route: '/stream', section: 'guard' },
-  { icon: Shield, label: 'Security Events', route: '/alerts', section: 'guard' },
-  { icon: FileCode, label: 'Rules', route: '/rules', section: 'guard' },
+  { icon: Radar, label: 'Security Events', route: '/alerts', section: 'guard' },
+  { icon: FileCode, label: 'Security Rules', route: '/rules', section: 'guard' },
   { icon: Boxes, label: 'Workloads', route: '/workloads', section: 'guard' },
-  { icon: Brain, label: 'Profiler', route: '/profiler', section: 'guard' },
+  { icon: Brain, label: 'Behavior Profiler', route: '/profiler', section: 'guard' },
   { icon: Cpu, label: 'Kernel X-Ray', route: '/kernel', section: 'learn' },
 ]
 

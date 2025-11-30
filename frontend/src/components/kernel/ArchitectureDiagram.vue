@@ -29,6 +29,10 @@ const maxRecentProcesses = 5
 const activeFlows = ref<{ id: string; type: string; blocked: boolean; startTime: number }[]>([])
 const pulsingProbes = ref<Set<string>>(new Set())
 
+// LSM decision counters
+const blockedCount = ref(0)
+const passedCount = ref(0)
+
 let unsubscribe: (() => void) | null = null
 
 const getProbeIcon = (category: string) => {
@@ -105,6 +109,13 @@ const handleEvent = (event: StreamEvent) => {
 
   recentProcesses.value = [process, ...recentProcesses.value].slice(0, maxRecentProcesses)
 
+  // Update LSM decision counters
+  if (blocked) {
+    blockedCount.value++
+  } else {
+    passedCount.value++
+  }
+
   activeFlows.value.push({ id, type: event.type, blocked, startTime: Date.now() })
 
   pulsingProbes.value.add(probeType)
@@ -162,6 +173,18 @@ onUnmounted(() => {
         <span class="live-dot"></span>
         <span class="live-text">LIVE</span>
       </div>
+      <div class="lsm-decision-stats">
+        <div class="decision-stat blocked">
+          <ShieldOff :size="14" />
+          <span class="decision-label">Blocked</span>
+          <span class="decision-count">{{ blockedCount }}</span>
+        </div>
+        <div class="decision-stat passed">
+          <ShieldCheck :size="14" />
+          <span class="decision-label">Passed</span>
+          <span class="decision-count">{{ passedCount }}</span>
+        </div>
+      </div>
       <div class="activity-meter">
         <span class="meter-label">Activity</span>
         <div class="meter-bar">
@@ -200,6 +223,38 @@ onUnmounted(() => {
             </div>
             <span class="stat-total">{{ formatNumber(getStatsForProbe(probe.id)?.totalCount || 0) }} captured</span>
           </div>
+        </div>
+      </div>
+
+      <!-- LSM Decision Point -->
+      <div class="lsm-decision-point">
+        <div class="decision-track blocked-track" :class="{ active: activeFlows.some(f => f.blocked) }">
+          <div class="track-label">
+            <ShieldOff :size="12" />
+            <span>BLOCKED</span>
+          </div>
+          <div class="track-line">
+            <div v-for="flow in activeFlows.filter(f => f.blocked)" :key="flow.id" class="track-particle blocked"></div>
+          </div>
+          <code class="track-result">-EPERM</code>
+        </div>
+
+        <div class="decision-center">
+          <div class="decision-box">
+            <Zap :size="16" />
+            <span>LSM</span>
+          </div>
+        </div>
+
+        <div class="decision-track passed-track" :class="{ active: activeFlows.some(f => !f.blocked) }">
+          <div class="track-label">
+            <ShieldCheck :size="12" />
+            <span>PASSED</span>
+          </div>
+          <div class="track-line">
+            <div v-for="flow in activeFlows.filter(f => !f.blocked)" :key="flow.id" class="track-particle passed"></div>
+          </div>
+          <code class="track-result">0</code>
         </div>
       </div>
 
@@ -287,19 +342,36 @@ onUnmounted(() => {
 
       <!-- Recent Processes - Live Feed -->
       <div class="processes-live">
-        <TransitionGroup name="process-slide">
+        <div class="feed-header">
+          <span class="feed-title">Recent Events</span>
+          <div class="feed-legend">
+            <span class="legend-blocked">
+              <ShieldOff :size="10" /> Blocked
+            </span>
+            <span class="legend-passed">
+              <ShieldCheck :size="10" /> Passed
+            </span>
+          </div>
+        </div>
+        <TransitionGroup name="process-slide" class="processes-grid">
           <div v-for="proc in recentProcesses" :key="proc.id" class="process-box"
             :class="[getEventColorClass(proc.type), { blocked: proc.blocked }]">
-            <div class="proc-status">
-              <ShieldOff v-if="proc.blocked" :size="12" class="status-blocked" />
-              <ShieldCheck v-else :size="12" class="status-allowed" />
+            <div class="proc-decision-badge" :class="proc.blocked ? 'blocked' : 'passed'">
+              <ShieldOff v-if="proc.blocked" :size="10" />
+              <ShieldCheck v-else :size="10" />
+              <span>{{ proc.blocked ? 'BLOCKED' : 'PASSED' }}</span>
             </div>
-            <component :is="getEventIcon(proc.type)" :size="16" class="proc-icon" />
-            <div class="proc-info">
-              <span class="proc-name">{{ proc.name }}</span>
-              <code class="proc-pid">PID: {{ proc.pid }}</code>
+            <div class="proc-main">
+              <component :is="getEventIcon(proc.type)" :size="16" class="proc-icon" />
+              <div class="proc-info">
+                <span class="proc-name">{{ proc.name }}</span>
+                <code class="proc-pid">PID: {{ proc.pid }}</code>
+              </div>
             </div>
-            <span class="proc-syscall">{{ proc.syscall }}</span>
+            <div class="proc-meta">
+              <span class="proc-syscall">{{ proc.syscall }}</span>
+              <span class="proc-detail">{{ proc.detail }}</span>
+            </div>
           </div>
         </TransitionGroup>
 
@@ -318,6 +390,20 @@ onUnmounted(() => {
           <span class="stat-number">{{ formatNumber(totalEvents) }}</span>
           <span class="stat-label">Total Events</span>
         </div>
+        <div class="legend-stat blocked-stat">
+          <span class="stat-number">{{ blockedCount }}</span>
+          <span class="stat-label">
+            <ShieldOff :size="12" />
+            Blocked
+          </span>
+        </div>
+        <div class="legend-stat passed-stat">
+          <span class="stat-number">{{ passedCount }}</span>
+          <span class="stat-label">
+            <ShieldCheck :size="12" />
+            Passed
+          </span>
+        </div>
         <div class="legend-stat">
           <span class="stat-number">{{ totalEventsPerSec }}</span>
           <span class="stat-label">Events/sec</span>
@@ -335,14 +421,6 @@ onUnmounted(() => {
         <div class="legend-item network">
           <Globe :size="14" />
           <span>Network</span>
-        </div>
-        <div class="legend-item blocked-legend">
-          <ShieldOff :size="14" />
-          <span>Blocked</span>
-        </div>
-        <div class="legend-item allowed-legend">
-          <ShieldCheck :size="14" />
-          <span>Allowed</span>
         </div>
       </div>
     </div>
@@ -437,6 +515,54 @@ onUnmounted(() => {
   font-weight: 600;
   color: var(--accent-primary);
   min-width: 50px;
+}
+
+/* LSM Decision Stats in Header */
+.lsm-decision-stats {
+  display: flex;
+  gap: 12px;
+}
+
+.decision-stat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-subtle);
+  transition: all 0.3s ease;
+}
+
+.decision-stat.blocked {
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.decision-stat.blocked svg {
+  color: rgba(239, 68, 68, 0.8);
+}
+
+.decision-stat.passed {
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.decision-stat.passed svg {
+  color: rgba(34, 197, 94, 0.8);
+}
+
+.decision-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.decision-count {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
 /* Space Sections */
@@ -696,6 +822,150 @@ onUnmounted(() => {
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-muted);
+}
+
+/* LSM Decision Point */
+.lsm-decision-point {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 20px;
+  padding: 16px 0;
+  margin-bottom: 16px;
+}
+
+.decision-track {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-subtle);
+  min-width: 100px;
+  transition: all 0.3s ease;
+}
+
+.decision-track.blocked-track {
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.decision-track.blocked-track.active {
+  background: rgba(239, 68, 68, 0.05);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.decision-track.passed-track {
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
+.decision-track.passed-track.active {
+  background: rgba(34, 197, 94, 0.05);
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.track-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.blocked-track .track-label {
+  color: rgba(239, 68, 68, 0.8);
+}
+
+.passed-track .track-label {
+  color: rgba(34, 197, 94, 0.8);
+}
+
+.track-line {
+  width: 4px;
+  height: 30px;
+  background: var(--bg-void);
+  border-radius: var(--radius-full);
+  position: relative;
+  overflow: hidden;
+}
+
+.decision-track.active .track-line {
+  background: var(--bg-void);
+}
+
+.track-particle {
+  position: absolute;
+  width: 100%;
+  height: 12px;
+  border-radius: var(--radius-full);
+  animation: track-flow 0.6s ease-out forwards;
+}
+
+.track-particle.blocked {
+  background: linear-gradient(to bottom, transparent, rgba(239, 68, 68, 0.8), transparent);
+}
+
+.track-particle.passed {
+  background: linear-gradient(to bottom, transparent, rgba(34, 197, 94, 0.8), transparent);
+}
+
+@keyframes track-flow {
+  0% {
+    top: -12px;
+    opacity: 1;
+  }
+
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
+}
+
+.track-result {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.blocked-track .track-result {
+  background: rgba(239, 68, 68, 0.1);
+  color: rgba(239, 68, 68, 0.8);
+}
+
+.passed-track .track-result {
+  background: rgba(34, 197, 94, 0.1);
+  color: rgba(34, 197, 94, 0.8);
+}
+
+.decision-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.decision-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(96, 165, 250, 0.1));
+  border: 2px solid var(--accent-primary);
+  border-radius: var(--radius-md);
+}
+
+.decision-box svg {
+  color: var(--accent-primary);
+}
+
+.decision-box span {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent-primary);
+  letter-spacing: 0.1em;
 }
 
 /* Data Flow */
@@ -1020,66 +1290,114 @@ onUnmounted(() => {
 /* Live Processes Feed */
 .processes-live {
   display: flex;
+  flex-direction: column;
   gap: 12px;
-  min-height: 60px;
+}
+
+.feed-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.feed-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.feed-legend {
+  display: flex;
+  gap: 12px;
+}
+
+.feed-legend span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+}
+
+.legend-blocked {
+  color: rgba(239, 68, 68, 0.7);
+}
+
+.legend-passed {
+  color: rgba(34, 197, 94, 0.7);
+}
+
+.processes-grid {
+  display: flex;
+  gap: 10px;
+  min-height: 80px;
   overflow-x: auto;
   padding: 4px;
 }
 
 .process-box {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
   background: var(--bg-overlay);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
   transition: all 0.3s ease;
   flex-shrink: 0;
-  min-width: 160px;
+  min-width: 150px;
   position: relative;
 }
 
 .process-box.blocked {
   border-color: rgba(239, 68, 68, 0.4);
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), transparent);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.06), transparent);
 }
 
 .process-box.process:not(.blocked) {
-  border-color: var(--status-info);
-  background: linear-gradient(135deg, rgba(96, 165, 250, 0.1), transparent);
+  border-color: rgba(34, 197, 94, 0.3);
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.06), transparent);
 }
 
 .process-box.file:not(.blocked) {
-  border-color: var(--status-safe);
-  background: linear-gradient(135deg, rgba(52, 211, 153, 0.1), transparent);
+  border-color: rgba(34, 197, 94, 0.3);
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.06), transparent);
 }
 
 .process-box.network:not(.blocked) {
-  border-color: var(--status-warning);
-  background: linear-gradient(135deg, rgba(251, 191, 36, 0.1), transparent);
+  border-color: rgba(34, 197, 94, 0.3);
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.06), transparent);
 }
 
-.proc-status {
-  position: absolute;
-  top: -6px;
-  right: -6px;
+.proc-decision-badge {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
+  gap: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.05em;
+  width: fit-content;
 }
 
-.status-blocked {
-  color: rgba(239, 68, 68, 0.8);
+.proc-decision-badge.blocked {
+  background: rgba(239, 68, 68, 0.15);
+  color: rgba(239, 68, 68, 0.9);
+  border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
-.status-allowed {
-  color: rgba(34, 197, 94, 0.8);
+.proc-decision-badge.passed {
+  background: rgba(34, 197, 94, 0.15);
+  color: rgba(34, 197, 94, 0.9);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.proc-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .proc-icon {
@@ -1125,13 +1443,29 @@ onUnmounted(() => {
   color: var(--text-muted);
 }
 
+.proc-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .proc-syscall {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 9px;
   color: var(--text-muted);
   background: var(--bg-void);
   padding: 2px 6px;
   border-radius: var(--radius-sm);
+}
+
+.proc-detail {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
 }
 
 /* Process slide animation */
@@ -1228,6 +1562,25 @@ onUnmounted(() => {
 .stat-label {
   font-size: 10px;
   color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-stat.blocked-stat .stat-number {
+  color: rgba(239, 68, 68, 0.9);
+}
+
+.legend-stat.blocked-stat .stat-label {
+  color: rgba(239, 68, 68, 0.7);
+}
+
+.legend-stat.passed-stat .stat-number {
+  color: rgba(34, 197, 94, 0.9);
+}
+
+.legend-stat.passed-stat .stat-label {
+  color: rgba(34, 197, 94, 0.7);
 }
 
 .legend-items {
@@ -1257,13 +1610,5 @@ onUnmounted(() => {
 
 .legend-item.network {
   color: var(--status-warning);
-}
-
-.legend-item.blocked-legend {
-  color: rgba(239, 68, 68, 0.7);
-}
-
-.legend-item.allowed-legend {
-  color: rgba(34, 197, 94, 0.7);
 }
 </style>

@@ -348,21 +348,16 @@ onUnmounted(() => {
           <TransitionGroup name="process-slide" class="processes-grid">
             <div v-for="proc in recentProcesses" :key="proc.id" class="process-box"
               :class="[getEventColorClass(proc.type), { blocked: proc.blocked }]">
-              <div class="proc-decision-badge" :class="proc.blocked ? 'blocked' : 'passed'">
-                <ShieldOff v-if="proc.blocked" :size="10" />
-                <ShieldCheck v-else :size="10" />
-                <span>{{ proc.blocked ? 'BLOCKED' : 'PASSED' }}</span>
+              <div class="proc-header">
+                <component :is="getEventIcon(proc.type)" :size="14" class="proc-icon" />
+                <span class="proc-name">{{ proc.name }}</span>
+                <span class="proc-badge" :class="proc.blocked ? 'blocked' : 'passed'">
+                  {{ proc.blocked ? 'BLOCKED' : 'OK' }}
+                </span>
               </div>
-              <div class="proc-main">
-                <component :is="getEventIcon(proc.type)" :size="16" class="proc-icon" />
-                <div class="proc-info">
-                  <span class="proc-name">{{ proc.name }}</span>
-                  <code class="proc-pid">PID: {{ proc.pid }}</code>
-                </div>
-              </div>
-              <div class="proc-meta">
-                <span class="proc-syscall">{{ proc.syscall }}</span>
-                <span class="proc-detail">{{ proc.detail }}</span>
+              <div class="proc-details">
+                <code>{{ proc.syscall }}</code>
+                <code>PID {{ proc.pid }}</code>
               </div>
             </div>
           </TransitionGroup>
@@ -1290,13 +1285,13 @@ onUnmounted(() => {
 }
 
 .processes-scroll-container {
-  height: 110px;
+  height: 70px;
   overflow-x: auto;
   overflow-y: hidden;
 }
 
 .processes-scroll-container::-webkit-scrollbar {
-  height: 6px;
+  height: 4px;
 }
 
 .processes-scroll-container::-webkit-scrollbar-track {
@@ -1315,73 +1310,45 @@ onUnmounted(() => {
 
 .processes-grid {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   height: 100%;
-  padding: 4px;
+  padding: 2px;
 }
 
 .process-box {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 4px;
+  padding: 8px 10px;
   background: var(--bg-overlay);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
   transition: all 0.3s ease;
   flex-shrink: 0;
-  min-width: 150px;
-  position: relative;
+  width: 130px;
 }
 
 .process-box.blocked {
   border-color: rgba(239, 68, 68, 0.4);
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.06), transparent);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), transparent);
 }
 
 .process-box.process:not(.blocked) {
-  border-color: rgba(34, 197, 94, 0.3);
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.06), transparent);
+  border-color: rgba(96, 165, 250, 0.3);
 }
 
 .process-box.file:not(.blocked) {
-  border-color: rgba(34, 197, 94, 0.3);
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.06), transparent);
+  border-color: rgba(16, 185, 129, 0.3);
 }
 
 .process-box.network:not(.blocked) {
-  border-color: rgba(34, 197, 94, 0.3);
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.06), transparent);
+  border-color: rgba(245, 158, 11, 0.3);
 }
 
-.proc-decision-badge {
+.proc-header {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 9px;
-  font-weight: 700;
-  padding: 3px 8px;
-  border-radius: var(--radius-sm);
-  letter-spacing: 0.05em;
-  width: fit-content;
-}
-
-.proc-decision-badge.blocked {
-  background: rgba(239, 68, 68, 0.15);
-  color: rgba(239, 68, 68, 0.9);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-}
-
-.proc-decision-badge.passed {
-  background: rgba(34, 197, 94, 0.15);
-  color: rgba(34, 197, 94, 0.9);
-  border: 1px solid rgba(34, 197, 94, 0.3);
-}
-
-.proc-main {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .proc-icon {
@@ -1401,19 +1368,12 @@ onUnmounted(() => {
 }
 
 .process-box.blocked .proc-icon {
-  color: rgba(239, 68, 68, 0.7);
-}
-
-.proc-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
+  color: rgba(239, 68, 68, 0.8);
 }
 
 .proc-name {
-  font-size: 12px;
+  flex: 1;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
@@ -1421,35 +1381,36 @@ onUnmounted(() => {
   text-overflow: ellipsis;
 }
 
-.proc-pid {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--text-muted);
+.proc-badge {
+  font-size: 8px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.03em;
 }
 
-.proc-meta {
+.proc-badge.blocked {
+  background: rgba(239, 68, 68, 0.2);
+  color: rgba(239, 68, 68, 0.95);
+}
+
+.proc-badge.passed {
+  background: rgba(34, 197, 94, 0.15);
+  color: rgba(34, 197, 94, 0.85);
+}
+
+.proc-details {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 6px;
 }
 
-.proc-syscall {
+.proc-details code {
   font-family: var(--font-mono);
   font-size: 9px;
   color: var(--text-muted);
   background: var(--bg-void);
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-}
-
-.proc-detail {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 120px;
+  padding: 1px 4px;
+  border-radius: 2px;
 }
 
 /* Process slide animation */

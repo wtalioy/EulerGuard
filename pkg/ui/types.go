@@ -8,6 +8,7 @@ type FrontendExecEvent struct {
 	CgroupID   string `json:"cgroupId"`
 	Comm       string `json:"comm"`
 	ParentComm string `json:"parentComm"`
+	Blocked    bool   `json:"blocked"`
 }
 
 type FrontendConnectEvent struct {
@@ -18,6 +19,7 @@ type FrontendConnectEvent struct {
 	Family    uint16 `json:"family"`
 	Port      uint16 `json:"port"`
 	Addr      string `json:"addr"`
+	Blocked   bool   `json:"blocked"`
 }
 
 type FrontendFileEvent struct {
@@ -27,6 +29,7 @@ type FrontendFileEvent struct {
 	CgroupID  string `json:"cgroupId"`
 	Flags     uint32 `json:"flags"`
 	Filename  string `json:"filename"`
+	Blocked   bool   `json:"blocked"`
 }
 
 type FrontendAlert struct {

@@ -129,6 +129,7 @@ func ExecToFrontend(ev events.ExecEvent) FrontendExecEvent {
 		CgroupID:   strconv.FormatUint(ev.CgroupID, 10),
 		Comm:       utils.ExtractCString(ev.Comm[:]),
 		ParentComm: utils.ExtractCString(ev.PComm[:]),
+		Blocked:    ev.Blocked == 1,
 	}
 }
 
@@ -140,6 +141,7 @@ func FileToFrontend(ev events.FileOpenEvent, filename string) FrontendFileEvent 
 		CgroupID:  strconv.FormatUint(ev.CgroupID, 10),
 		Flags:     ev.Flags,
 		Filename:  filename,
+		Blocked:   ev.Blocked == 1,
 	}
 }
 
@@ -152,6 +154,7 @@ func ConnectToFrontend(ev events.ConnectEvent, addr string) FrontendConnectEvent
 		Family:    ev.Family,
 		Port:      ev.Port,
 		Addr:      addr,
+		Blocked:   ev.Blocked == 1,
 	}
 }
 

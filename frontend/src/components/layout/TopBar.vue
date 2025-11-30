@@ -1,28 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
-import { Activity } from 'lucide-vue-next'
-import { subscribeToEventRates, type EventRates } from '../../lib/api'
+import { ref, onMounted } from 'vue'
 
 const probeStatus = ref<'active' | 'error' | 'starting'>('starting')
-const eventRate = ref(0)
-
-let unsubscribeRates: (() => void) | null = null
 
 onMounted(() => {
-  unsubscribeRates = subscribeToEventRates((data: EventRates) => {
-    eventRate.value = data.exec + data.file + data.network
-    probeStatus.value = 'active'
-  })
-
   setTimeout(() => {
     if (probeStatus.value === 'starting') {
       probeStatus.value = 'active'
     }
   }, 2000)
-})
-
-onUnmounted(() => {
-  unsubscribeRates?.()
 })
 </script>
 
@@ -39,11 +25,7 @@ onUnmounted(() => {
     </div>
 
     <div class="topbar-center">
-      <div class="rate-display">
-        <Activity :size="16" class="rate-icon" />
-        <span class="rate-value">{{ eventRate }}</span>
-        <span class="rate-unit">events/s</span>
-      </div>
+      <!-- Rate display removed -->
     </div>
 
     <div class="topbar-right">
@@ -63,7 +45,8 @@ onUnmounted(() => {
   padding: 0 24px;
 }
 
-.topbar-left, .topbar-right {
+.topbar-left,
+.topbar-right {
   display: flex;
   align-items: center;
   gap: 16px;
@@ -128,36 +111,28 @@ onUnmounted(() => {
   color: var(--status-safe);
 }
 
-.rate-display {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 16px;
-  background: var(--bg-elevated);
-  border-radius: var(--radius-full);
-}
-
-.rate-icon { color: var(--chart-exec); }
-
-.rate-value {
-  font-family: var(--font-mono);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.rate-unit {
-  font-size: 12px;
-  color: var(--text-muted);
-}
 
 @keyframes pulse-ring {
-  0% { transform: scale(0.5); opacity: 0.8; }
-  100% { transform: scale(2); opacity: 0; }
+  0% {
+    transform: scale(0.5);
+    opacity: 0.8;
+  }
+
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
 }
 
 @keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
 }
 </style>

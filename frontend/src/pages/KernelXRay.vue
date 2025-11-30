@@ -81,19 +81,6 @@ onUnmounted(() => {
             in real-time by returning <code>-EPERM</code>.</p>
         </div>
       </div>
-      <div class="banner-stats">
-        <div class="banner-stat">
-          <span class="stat-value">3</span>
-          <span class="stat-label">LSM Hooks</span>
-        </div>
-        <div class="banner-stat">
-          <div class="stat-capabilities">
-            <span class="cap-tag block">Block</span>
-            <span class="cap-tag alert">Alert</span>
-          </div>
-          <span class="stat-label">Capabilities</span>
-        </div>
-      </div>
     </div>
 
     <!-- Main Content -->
@@ -337,7 +324,7 @@ onUnmounted(() => {
 
 .banner-content {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 16px;
 }
 
@@ -375,56 +362,6 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-.banner-stats {
-  display: flex;
-  gap: 16px;
-}
-
-.banner-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 12px 20px;
-  background: var(--bg-surface);
-  border-radius: var(--radius-md);
-  min-width: 100px;
-}
-
-.banner-stat .stat-value {
-  font-size: 20px;
-  font-weight: 700;
-  color: #8b5cf6;
-  font-family: var(--font-mono);
-}
-
-.stat-capabilities {
-  display: flex;
-  gap: 6px;
-}
-
-.cap-tag {
-  padding: 3px 8px;
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.cap-tag.block {
-  background: rgba(239, 68, 68, 0.1);
-  color: rgba(239, 68, 68, 0.8);
-}
-
-.cap-tag.alert {
-  background: rgba(251, 191, 36, 0.1);
-  color: rgba(251, 191, 36, 0.8);
-}
-
-.banner-stat .stat-label {
-  font-size: 10px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
 
 /* Content Sections */
 .kernel-content {

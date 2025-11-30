@@ -65,8 +65,8 @@ func Init(opts config.Options) (*Core, error) {
 	c.RulesPath = opts.RulesPath
 	c.Rules, c.RuleEngine = LoadRules(opts.RulesPath)
 
-	if err := PopulateMonitoredPaths(objs.MonitoredPaths, c.Rules, opts.RulesPath); err != nil {
-		log.Printf("Warning: failed to populate monitored paths: %v", err)
+	if err := PopulateMonitoredFiles(objs.MonitoredFiles, c.Rules, opts.RulesPath); err != nil {
+		log.Printf("Warning: failed to populate monitored files: %v", err)
 	}
 	if err := PopulateBlockedPorts(objs.BlockedPorts, c.Rules); err != nil {
 		log.Printf("Warning: failed to populate blocked ports: %v", err)
@@ -81,9 +81,9 @@ func (c *Core) ReloadRules() error {
 	c.RuleEngine = newEngine
 
 	if c.Objs != nil {
-		if c.Objs.MonitoredPaths != nil {
-			if err := RepopulateMonitoredPaths(c.Objs.MonitoredPaths, c.Rules, c.RulesPath); err != nil {
-				return fmt.Errorf("failed to repopulate monitored paths: %w", err)
+		if c.Objs.MonitoredFiles != nil {
+			if err := RepopulateMonitoredFiles(c.Objs.MonitoredFiles, c.Rules, c.RulesPath); err != nil {
+				return fmt.Errorf("failed to repopulate monitored files: %w", err)
 			}
 		}
 		if c.Objs.BlockedPorts != nil {
@@ -97,9 +97,9 @@ func (c *Core) ReloadRules() error {
 	return nil
 }
 
-func RepopulateMonitoredPaths(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPath string) error {
+func RepopulateMonitoredFiles(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPath string) error {
 	if bpfMap == nil {
-		return fmt.Errorf("monitored_paths map is nil")
+		return fmt.Errorf("monitored_files map is nil")
 	}
 
 	var key [events.PathMaxLen]byte
@@ -115,7 +115,7 @@ func RepopulateMonitoredPaths(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPat
 		_ = bpfMap.Delete(k)
 	}
 
-	return PopulateMonitoredPaths(bpfMap, ruleList, rulesPath)
+	return PopulateMonitoredFiles(bpfMap, ruleList, rulesPath)
 }
 
 func RepopulateBlockedPorts(bpfMap *cebpf.Map, ruleList []rules.Rule) error {
@@ -197,12 +197,12 @@ func LoadRules(rulesPath string) ([]rules.Rule, *rules.Engine) {
 	return loadedRules, rules.NewEngine(loadedRules)
 }
 
-func PopulateMonitoredPaths(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPath string) error {
+func PopulateMonitoredFiles(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPath string) error {
 	if bpfMap == nil {
-		return fmt.Errorf("monitored_paths map is nil")
+		return fmt.Errorf("monitored_files map is nil")
 	}
 
-	pathActions := make(map[string]uint8)
+	fileActions := make(map[string]uint8)
 	for _, rule := range ruleList {
 		var path string
 		if rule.Match.Filename != "" {
@@ -213,6 +213,11 @@ func PopulateMonitoredPaths(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPath 
 			continue
 		}
 
+		key := extractParentFilename(path)
+		if key == "" {
+			continue
+		}
+
 		var action uint8
 		if rule.Action == rules.ActionBlock {
 			action = rules.BPFActionBlock
@@ -220,23 +225,23 @@ func PopulateMonitoredPaths(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPath 
 			action = rules.BPFActionMonitor
 		}
 
-		if existing, ok := pathActions[path]; !ok || action > existing {
-			pathActions[path] = action
+		if existing, ok := fileActions[key]; !ok || action > existing {
+			fileActions[key] = action
 		}
 	}
 
-	if len(pathActions) == 0 {
+	if len(fileActions) == 0 {
 		log.Printf("Warning: No file access rules found in %s", rulesPath)
 		return nil
 	}
 
 	countMonitor := 0
 	countBlock := 0
-	for path, action := range pathActions {
+	for filename, action := range fileActions {
 		key := make([]byte, events.PathMaxLen)
-		copy(key, []byte(path))
+		copy(key, []byte(filename))
 		if err := bpfMap.Put(key, action); err != nil {
-			return fmt.Errorf("add path %q to BPF map: %w", path, err)
+			return fmt.Errorf("add file %q to BPF map: %w", filename, err)
 		}
 		if action == rules.BPFActionBlock {
 			countBlock++
@@ -245,9 +250,40 @@ func PopulateMonitoredPaths(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPath 
 		}
 	}
 
-	log.Printf("Populated BPF map with %d monitored paths (%d block, %d monitor)",
-		len(pathActions), countBlock, countMonitor)
+	log.Printf("Populated BPF map with %d monitored files (%d block, %d monitor)",
+		len(fileActions), countBlock, countMonitor)
 	return nil
+}
+
+
+func extractParentFilename(path string) string {
+	for len(path) > 0 && path[0] == '/' {
+		path = path[1:]
+	}
+	if path == "" {
+		return ""
+	}
+
+	lastSlash := -1
+	secondLastSlash := -1
+	for i := len(path) - 1; i >= 0; i-- {
+		if path[i] == '/' {
+			if lastSlash == -1 {
+				lastSlash = i
+			} else {
+				secondLastSlash = i
+				break
+			}
+		}
+	}
+
+	if lastSlash == -1 {
+		return path
+	}
+	if secondLastSlash == -1 {
+		return path
+	}
+	return path[secondLastSlash+1:]
 }
 
 func PopulateBlockedPorts(bpfMap *cebpf.Map, ruleList []rules.Rule) error {

@@ -14,7 +14,7 @@ type LSMObjects struct {
 	LsmSocketConnect *ebpf.Program `ebpf:"lsm_socket_connect"`
 
 	Events         *ebpf.Map `ebpf:"events"`
-	MonitoredPaths *ebpf.Map `ebpf:"monitored_paths"`
+	MonitoredFiles *ebpf.Map `ebpf:"monitored_files"`
 	BlockedPorts   *ebpf.Map `ebpf:"blocked_ports"`
 }
 
@@ -74,9 +74,9 @@ func (o *LSMObjects) Close() error {
 			firstErr = fmt.Errorf("close events map: %w", err)
 		}
 	}
-	if o.MonitoredPaths != nil {
-		if err := o.MonitoredPaths.Close(); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("close monitored_paths map: %w", err)
+	if o.MonitoredFiles != nil {
+		if err := o.MonitoredFiles.Close(); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("close monitored_files map: %w", err)
 		}
 	}
 	if o.BlockedPorts != nil {

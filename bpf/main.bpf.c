@@ -6,8 +6,7 @@
 
 #define TASK_COMM_LEN 16
 #define PATH_MAX_LEN 256
-#define MAX_PATH_DEPTH 16
-#define MAX_NAME_LEN 48
+#define NAME_MAX 128
 #define EVENT_TYPE_EXEC 1
 #define EVENT_TYPE_FILE_OPEN 2
 #define EVENT_TYPE_CONNECT 3
@@ -26,6 +25,7 @@ struct exec_event {
     u64 cgroup_id;
     char comm[TASK_COMM_LEN];
     char pcomm[TASK_COMM_LEN];
+    char filename[PATH_MAX_LEN];
     u8 blocked;
 } __attribute__((packed));
 
@@ -54,12 +54,13 @@ struct {
     __uint(max_entries, 256 * 1024);
 } events SEC(".maps");
 
+// Key: "parent/filename" for 2-level matching (e.g., "etc/shadow")
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __uint(max_entries, 1024);
     __type(key, char[PATH_MAX_LEN]);
     __type(value, u8);
-} monitored_paths SEC(".maps");
+} monitored_files SEC(".maps");
 
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
@@ -68,25 +69,19 @@ struct {
     __type(value, u8);
 } blocked_ports SEC(".maps");
 
-struct {
-    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-    __uint(max_entries, 1);
-    __type(key, u32);
-    __type(value, char[PATH_MAX_LEN]);
-} path_buffer SEC(".maps");
-
-struct path_build_ctx {
-    char names[MAX_PATH_DEPTH][MAX_NAME_LEN];
-    u32 lens[MAX_PATH_DEPTH];
-    int count;
+// Per-CPU scratch buffers for path building (avoids stack overflow)
+struct path_scratch {
+    char path_buf[PATH_MAX_LEN];
+    char filename[NAME_MAX];
+    char parent[NAME_MAX];
 };
 
 struct {
     __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
     __uint(max_entries, 1);
     __type(key, u32);
-    __type(value, struct path_build_ctx);
-} path_ctx SEC(".maps");
+    __type(value, struct path_scratch);
+} scratch SEC(".maps");
 
 static __always_inline u32 get_parent_pid(struct task_struct* task)
 {
@@ -95,77 +90,52 @@ static __always_inline u32 get_parent_pid(struct task_struct* task)
     return BPF_CORE_READ(task, real_parent, tgid);
 }
 
-static __always_inline u8 get_path_action(struct dentry* dentry, char* path_buf)
+static __always_inline u8 check_file_action(struct dentry* dentry, char* out_path)
 {
-    u32 ctx_key = 0;
-    struct path_build_ctx* ctx = bpf_map_lookup_elem(&path_ctx, &ctx_key);
-    if (!ctx)
+    if (!dentry)
         return 0;
 
-    ctx->count = 0;
-    struct dentry* d = dentry;
+    u32 key = 0;
+    struct path_scratch* s = bpf_map_lookup_elem(&scratch, &key);
+    if (!s)
+        return 0;
+    __builtin_memset(s, 0, sizeof(*s));
 
-    // Walk up dentry tree, collect path components
-    for (int i = 0; i < MAX_PATH_DEPTH && d; i++) {
-        struct dentry* parent = BPF_CORE_READ(d, d_parent);
-        if (parent == d)
-            break;
+    struct qstr d_name = BPF_CORE_READ(dentry, d_name);
+    if (!d_name.name || d_name.len == 0 || d_name.len >= NAME_MAX)
+        return 0;
+    bpf_probe_read_kernel_str(s->filename, NAME_MAX, d_name.name);
 
-        struct qstr d_name;
-        bpf_probe_read_kernel(&d_name, sizeof(d_name), &d->d_name);
-
-        u32 len = d_name.len;
-        if (len > 0 && len < MAX_NAME_LEN) {
-            bpf_probe_read_kernel_str(ctx->names[i], MAX_NAME_LEN, d_name.name);
-            ctx->lens[i] = len;
-            ctx->count = i + 1;
+    struct dentry* parent_dentry = BPF_CORE_READ(dentry, d_parent);
+    if (parent_dentry && parent_dentry != dentry) {
+        struct qstr pd_name = BPF_CORE_READ(parent_dentry, d_name);
+        if (pd_name.name && pd_name.len > 0 && pd_name.len < NAME_MAX) {
+            bpf_probe_read_kernel_str(s->parent, NAME_MAX, pd_name.name);
         }
-        d = parent;
     }
 
-    if (ctx->count == 0)
-        return 0;
-
-    // Build path: iterate from root (high index) to leaf (index 0)
-    __builtin_memset(path_buf, 0, PATH_MAX_LEN);
     int pos = 0;
-    int cnt = ctx->count;
-
-    for (int i = MAX_PATH_DEPTH - 1; i >= 0; i--) {
-        if (i >= cnt)
-            continue;
-        if (pos >= PATH_MAX_LEN - 2)
-            break;
-
-        path_buf[pos++] = '/';
-
-        u32 len = ctx->lens[i];
-        if (len > MAX_NAME_LEN - 1)
-            len = MAX_NAME_LEN - 1;
-
-        for (u32 j = 0; j < MAX_NAME_LEN - 1 && j < len && pos < PATH_MAX_LEN - 1; j++) {
-            path_buf[pos++] = ctx->names[i][j];
-        }
+    for (int i = 0; i < NAME_MAX - 1 && s->parent[i] && pos < PATH_MAX_LEN - 2; i++) {
+        s->path_buf[pos++] = s->parent[i];
     }
-
-    // look up full path
-    u8* val = bpf_map_lookup_elem(&monitored_paths, path_buf);
-    if (val)
-        return *val;
-
-    // Fallback: try just the filename (leaf = index 0)
-    if (ctx->count > 0) {
-        char basename[PATH_MAX_LEN] = {};
-        u32 len = ctx->lens[0];
-        if (len > MAX_NAME_LEN - 1)
-            len = MAX_NAME_LEN - 1;
-        for (u32 j = 0; j < len && j < MAX_NAME_LEN - 1; j++) {
-            basename[j] = ctx->names[0][j];
-        }
-        val = bpf_map_lookup_elem(&monitored_paths, basename);
-        if (val)
-            return *val;
+    if (pos > 0 && pos < PATH_MAX_LEN - 1) {
+        s->path_buf[pos++] = '/';
     }
+    for (int i = 0; i < NAME_MAX - 1 && s->filename[i] && pos < PATH_MAX_LEN - 1; i++) {
+        s->path_buf[pos++] = s->filename[i];
+    }
+    
+    __builtin_memcpy(out_path, s->path_buf, PATH_MAX_LEN);
+    u8* action = bpf_map_lookup_elem(&monitored_files, s->path_buf);
+    if (action)
+        return *action;
+
+    // Fallback: try just filename (for rules without path)
+    __builtin_memset(s->path_buf, 0, PATH_MAX_LEN);
+    __builtin_memcpy(s->path_buf, s->filename, NAME_MAX);
+    action = bpf_map_lookup_elem(&monitored_files, s->path_buf);
+    if (action)
+        return *action;
 
     return 0;
 }
@@ -181,19 +151,20 @@ int BPF_PROG(lsm_bprm_check, struct linux_binprm* bprm)
     int ret = 0;
     u8 blocked = 0;
 
+    u32 scratch_key = 0;
+    struct path_scratch* s = bpf_map_lookup_elem(&scratch, &scratch_key);
+    if (!s)
+        return 0;
+
+    __builtin_memset(s->path_buf, 0, PATH_MAX_LEN);
+
     struct file* file = BPF_CORE_READ(bprm, file);
     if (file) {
         struct dentry* dentry = BPF_CORE_READ(file, f_path.dentry);
-        if (dentry) {
-            u32 key = 0;
-            char* path_buf = bpf_map_lookup_elem(&path_buffer, &key);
-            if (path_buf) {
-                u8 action = get_path_action(dentry, path_buf);
-                if (action == ACTION_BLOCK) {
-                    ret = -EPERM;
-                    blocked = 1;
-                }
-            }
+        u8 action = check_file_action(dentry, s->path_buf);
+        if (action == ACTION_BLOCK) {
+            ret = -EPERM;
+            blocked = 1;
         }
     }
 
@@ -206,6 +177,7 @@ int BPF_PROG(lsm_bprm_check, struct linux_binprm* bprm)
     event->ppid = get_parent_pid(task);
     event->cgroup_id = bpf_get_current_cgroup_id();
     event->blocked = blocked;
+    __builtin_memcpy(event->filename, s->path_buf, PATH_MAX_LEN);
     bpf_get_current_comm(&event->comm, sizeof(event->comm));
 
     parent = BPF_CORE_READ(task, real_parent);
@@ -228,16 +200,15 @@ int BPF_PROG(lsm_file_open, struct file* file)
     int ret = 0;
     u8 blocked = 0;
 
+    u32 scratch_key = 0;
+    struct path_scratch* s = bpf_map_lookup_elem(&scratch, &scratch_key);
+    if (!s)
+        return 0;
+
+    __builtin_memset(s->path_buf, 0, PATH_MAX_LEN);
+
     struct dentry* dentry = BPF_CORE_READ(file, f_path.dentry);
-    if (!dentry)
-        return 0;
-
-    u32 key = 0;
-    char* path_buf = bpf_map_lookup_elem(&path_buffer, &key);
-    if (!path_buf)
-        return 0;
-
-    u8 action = get_path_action(dentry, path_buf);
+    u8 action = check_file_action(dentry, s->path_buf);
     if (!action)
         return 0;
 
@@ -255,7 +226,7 @@ int BPF_PROG(lsm_file_open, struct file* file)
     event->cgroup_id = bpf_get_current_cgroup_id();
     event->flags = BPF_CORE_READ(file, f_flags);
     event->blocked = blocked;
-    __builtin_memcpy(event->filename, path_buf, PATH_MAX_LEN);
+    __builtin_memcpy(event->filename, s->path_buf, PATH_MAX_LEN);
     bpf_ringbuf_submit(event, 0);
 
     return ret;

@@ -7,9 +7,9 @@ import (
 
 const (
 	// Event sizes: type(1) + fields + blocked(1)
-	MinExecEventSize     = 1 + 4 + 4 + 8 + TaskCommLen + TaskCommLen + 1 // 50 bytes
-	MinFileOpenEventSize = 1 + 4 + 8 + 4 + PathMaxLen + 1                // 274 bytes
-	MinConnectEventSize  = 1 + 4 + 8 + 2 + 2 + 4 + 16 + 1                // 38 bytes
+	MinExecEventSize     = 1 + 4 + 4 + 8 + TaskCommLen + TaskCommLen + PathMaxLen + 1 // 306 bytes
+	MinFileOpenEventSize = 1 + 4 + 8 + 4 + PathMaxLen + 1                              // 274 bytes
+	MinConnectEventSize  = 1 + 4 + 8 + 2 + 2 + 4 + 16 + 1                              // 38 bytes
 )
 
 func DecodeExecEvent(data []byte) (ExecEvent, error) {
@@ -29,6 +29,8 @@ func DecodeExecEvent(data []byte) (ExecEvent, error) {
 	offset += TaskCommLen
 	copy(ev.PComm[:], data[offset:offset+TaskCommLen])
 	offset += TaskCommLen
+	copy(ev.Filename[:], data[offset:offset+PathMaxLen])
+	offset += PathMaxLen
 	ev.Blocked = data[offset]
 
 	return ev, nil

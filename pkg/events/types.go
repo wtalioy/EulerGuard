@@ -20,6 +20,7 @@ type ExecEvent struct {
 	CgroupID uint64
 	Comm     [TaskCommLen]byte
 	PComm    [TaskCommLen]byte
+	Filename [PathMaxLen]byte
 	Blocked  uint8
 }
 

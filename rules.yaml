@@ -38,11 +38,11 @@ rules:
   # action: block - actively blocks file access
   # action: alert - only monitors and alerts
   # ============================================
-  - name: Block Access to Shadow File
-    description: Block unauthorized access to /etc/shadow
+  - name: Block specific file
+    description: Block access to README file
     severity: critical
     match:
-      filename: /etc/shadow
+      filename: README.md
     action: block
     type: file
   - name: Monitor Access to Passwd File

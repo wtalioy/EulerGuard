@@ -33,6 +33,9 @@ const pulsingProbes = ref<Set<string>>(new Set())
 const blockedCount = ref(0)
 const passedCount = ref(0)
 
+// Track recent blocked events for visual feedback
+const recentBlockedPulse = ref(false)
+
 let unsubscribe: (() => void) | null = null
 
 const getProbeIcon = (category: string) => {
@@ -112,6 +115,11 @@ const handleEvent = (event: StreamEvent) => {
   // Update LSM decision counters
   if (blocked) {
     blockedCount.value++
+    // Trigger visual pulse for blocked events
+    recentBlockedPulse.value = true
+    setTimeout(() => {
+      recentBlockedPulse.value = false
+    }, 600)
   } else {
     passedCount.value++
   }
@@ -173,18 +181,6 @@ onUnmounted(() => {
         <span class="live-dot"></span>
         <span class="live-text">LIVE</span>
       </div>
-      <div class="lsm-decision-stats">
-        <div class="decision-stat blocked">
-          <ShieldOff :size="14" />
-          <span class="decision-label">Blocked</span>
-          <span class="decision-count">{{ blockedCount }}</span>
-        </div>
-        <div class="decision-stat passed">
-          <ShieldCheck :size="14" />
-          <span class="decision-label">Passed</span>
-          <span class="decision-count">{{ passedCount }}</span>
-        </div>
-      </div>
       <div class="activity-meter">
         <span class="meter-label">Activity</span>
         <div class="meter-bar">
@@ -228,7 +224,8 @@ onUnmounted(() => {
 
       <!-- LSM Decision Point -->
       <div class="lsm-decision-point">
-        <div class="decision-track blocked-track" :class="{ active: activeFlows.some(f => f.blocked) }">
+        <div class="decision-track blocked-track"
+          :class="{ active: activeFlows.some(f => f.blocked), pulsing: recentBlockedPulse }">
           <div class="track-label">
             <ShieldOff :size="12" />
             <span>BLOCKED</span>
@@ -237,6 +234,7 @@ onUnmounted(() => {
             <div v-for="flow in activeFlows.filter(f => f.blocked)" :key="flow.id" class="track-particle blocked"></div>
           </div>
           <code class="track-result">-EPERM</code>
+          <span class="blocked-counter">{{ blockedCount }}</span>
         </div>
 
         <div class="decision-center">
@@ -255,6 +253,7 @@ onUnmounted(() => {
             <div v-for="flow in activeFlows.filter(f => !f.blocked)" :key="flow.id" class="track-particle passed"></div>
           </div>
           <code class="track-result">0</code>
+          <span class="passed-counter">{{ passedCount }}</span>
         </div>
       </div>
 
@@ -344,41 +343,35 @@ onUnmounted(() => {
       <div class="processes-live">
         <div class="feed-header">
           <span class="feed-title">Recent Events</span>
-          <div class="feed-legend">
-            <span class="legend-blocked">
-              <ShieldOff :size="10" /> Blocked
-            </span>
-            <span class="legend-passed">
-              <ShieldCheck :size="10" /> Passed
-            </span>
-          </div>
         </div>
-        <TransitionGroup name="process-slide" class="processes-grid">
-          <div v-for="proc in recentProcesses" :key="proc.id" class="process-box"
-            :class="[getEventColorClass(proc.type), { blocked: proc.blocked }]">
-            <div class="proc-decision-badge" :class="proc.blocked ? 'blocked' : 'passed'">
-              <ShieldOff v-if="proc.blocked" :size="10" />
-              <ShieldCheck v-else :size="10" />
-              <span>{{ proc.blocked ? 'BLOCKED' : 'PASSED' }}</span>
-            </div>
-            <div class="proc-main">
-              <component :is="getEventIcon(proc.type)" :size="16" class="proc-icon" />
-              <div class="proc-info">
-                <span class="proc-name">{{ proc.name }}</span>
-                <code class="proc-pid">PID: {{ proc.pid }}</code>
+        <div class="processes-scroll-container">
+          <TransitionGroup name="process-slide" class="processes-grid">
+            <div v-for="proc in recentProcesses" :key="proc.id" class="process-box"
+              :class="[getEventColorClass(proc.type), { blocked: proc.blocked }]">
+              <div class="proc-decision-badge" :class="proc.blocked ? 'blocked' : 'passed'">
+                <ShieldOff v-if="proc.blocked" :size="10" />
+                <ShieldCheck v-else :size="10" />
+                <span>{{ proc.blocked ? 'BLOCKED' : 'PASSED' }}</span>
+              </div>
+              <div class="proc-main">
+                <component :is="getEventIcon(proc.type)" :size="16" class="proc-icon" />
+                <div class="proc-info">
+                  <span class="proc-name">{{ proc.name }}</span>
+                  <code class="proc-pid">PID: {{ proc.pid }}</code>
+                </div>
+              </div>
+              <div class="proc-meta">
+                <span class="proc-syscall">{{ proc.syscall }}</span>
+                <span class="proc-detail">{{ proc.detail }}</span>
               </div>
             </div>
-            <div class="proc-meta">
-              <span class="proc-syscall">{{ proc.syscall }}</span>
-              <span class="proc-detail">{{ proc.detail }}</span>
-            </div>
-          </div>
-        </TransitionGroup>
+          </TransitionGroup>
 
-        <!-- Empty state -->
-        <div v-if="recentProcesses.length === 0" class="empty-processes">
-          <Zap :size="24" class="empty-icon" />
-          <span>Waiting for events...</span>
+          <!-- Empty state -->
+          <div v-if="recentProcesses.length === 0" class="empty-processes">
+            <Zap :size="24" class="empty-icon" />
+            <span>Waiting for events...</span>
+          </div>
         </div>
       </div>
     </div>
@@ -517,53 +510,6 @@ onUnmounted(() => {
   min-width: 50px;
 }
 
-/* LSM Decision Stats in Header */
-.lsm-decision-stats {
-  display: flex;
-  gap: 12px;
-}
-
-.decision-stat {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: var(--radius-md);
-  background: var(--bg-overlay);
-  border: 1px solid var(--border-subtle);
-  transition: all 0.3s ease;
-}
-
-.decision-stat.blocked {
-  border-color: rgba(239, 68, 68, 0.3);
-}
-
-.decision-stat.blocked svg {
-  color: rgba(239, 68, 68, 0.8);
-}
-
-.decision-stat.passed {
-  border-color: rgba(34, 197, 94, 0.3);
-}
-
-.decision-stat.passed svg {
-  color: rgba(34, 197, 94, 0.8);
-}
-
-.decision-label {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.decision-count {
-  font-family: var(--font-mono);
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
 
 /* Space Sections */
 .space-section {
@@ -856,6 +802,25 @@ onUnmounted(() => {
   border-color: rgba(239, 68, 68, 0.4);
 }
 
+.decision-track.blocked-track.pulsing {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.6);
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+  animation: blocked-pulse 0.6s ease-out;
+}
+
+@keyframes blocked-pulse {
+  0% {
+    box-shadow: 0 0 30px rgba(239, 68, 68, 0.5);
+    transform: scale(1.02);
+  }
+
+  100% {
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.2);
+    transform: scale(1);
+  }
+}
+
 .decision-track.passed-track {
   border-color: rgba(34, 197, 94, 0.2);
 }
@@ -938,6 +903,22 @@ onUnmounted(() => {
 .passed-track .track-result {
   background: rgba(34, 197, 94, 0.1);
   color: rgba(34, 197, 94, 0.8);
+}
+
+.blocked-counter,
+.passed-counter {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.blocked-counter {
+  color: rgba(239, 68, 68, 0.9);
+}
+
+.passed-counter {
+  color: rgba(34, 197, 94, 0.9);
 }
 
 .decision-center {
@@ -1291,7 +1272,7 @@ onUnmounted(() => {
 .processes-live {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .feed-header {
@@ -1308,31 +1289,34 @@ onUnmounted(() => {
   letter-spacing: 0.05em;
 }
 
-.feed-legend {
-  display: flex;
-  gap: 12px;
+.processes-scroll-container {
+  height: 110px;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
-.feed-legend span {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 10px;
+.processes-scroll-container::-webkit-scrollbar {
+  height: 6px;
 }
 
-.legend-blocked {
-  color: rgba(239, 68, 68, 0.7);
+.processes-scroll-container::-webkit-scrollbar-track {
+  background: var(--bg-void);
+  border-radius: var(--radius-full);
 }
 
-.legend-passed {
-  color: rgba(34, 197, 94, 0.7);
+.processes-scroll-container::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: var(--radius-full);
+}
+
+.processes-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
 }
 
 .processes-grid {
   display: flex;
   gap: 10px;
-  min-height: 80px;
-  overflow-x: auto;
+  height: 100%;
   padding: 4px;
 }
 

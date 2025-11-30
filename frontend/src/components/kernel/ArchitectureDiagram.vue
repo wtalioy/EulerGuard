@@ -345,7 +345,7 @@ onUnmounted(() => {
           <span class="feed-title">Recent Events</span>
         </div>
         <div class="processes-scroll-container">
-          <TransitionGroup name="process-slide" class="processes-grid">
+          <TransitionGroup tag="div" name="process-slide" class="processes-grid">
             <div v-for="proc in recentProcesses" :key="proc.id" class="process-box"
               :class="[getEventColorClass(proc.type), { blocked: proc.blocked }]">
               <div class="proc-header">
@@ -1285,7 +1285,7 @@ onUnmounted(() => {
 }
 
 .processes-scroll-container {
-  height: 70px;
+  height: 60px;
   overflow-x: auto;
   overflow-y: hidden;
 }
@@ -1310,22 +1310,26 @@ onUnmounted(() => {
 
 .processes-grid {
   display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
   gap: 8px;
   height: 100%;
-  padding: 2px;
+  align-items: stretch;
 }
 
 .process-box {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 4px;
-  padding: 8px 10px;
+  padding: 8px 12px;
   background: var(--bg-overlay);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
-  transition: all 0.3s ease;
   flex-shrink: 0;
-  width: 130px;
+  width: 140px;
+  height: 100%;
+  box-sizing: border-box;
 }
 
 .process-box.blocked {
@@ -1349,26 +1353,11 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 
 .proc-icon {
   flex-shrink: 0;
-}
-
-.process-box.process .proc-icon {
-  color: var(--status-info);
-}
-
-.process-box.file .proc-icon {
-  color: var(--status-safe);
-}
-
-.process-box.network .proc-icon {
-  color: var(--status-warning);
-}
-
-.process-box.blocked .proc-icon {
-  color: rgba(239, 68, 68, 0.8);
 }
 
 .proc-name {
@@ -1379,12 +1368,14 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .proc-badge {
+  flex-shrink: 0;
   font-size: 8px;
   font-weight: 700;
-  padding: 2px 5px;
+  padding: 2px 6px;
   border-radius: var(--radius-sm);
   letter-spacing: 0.03em;
 }
@@ -1409,8 +1400,24 @@ onUnmounted(() => {
   font-size: 9px;
   color: var(--text-muted);
   background: var(--bg-void);
-  padding: 1px 4px;
+  padding: 2px 5px;
   border-radius: 2px;
+}
+
+.process-box.process .proc-icon {
+  color: var(--status-info);
+}
+
+.process-box.file .proc-icon {
+  color: var(--status-safe);
+}
+
+.process-box.network .proc-icon {
+  color: var(--status-warning);
+}
+
+.process-box.blocked .proc-icon {
+  color: rgba(239, 68, 68, 0.8);
 }
 
 /* Process slide animation */

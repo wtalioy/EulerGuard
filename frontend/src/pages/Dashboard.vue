@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { Activity, AlertTriangle, Box, Boxes, ArrowRight } from 'lucide-vue-next'
+import {
+  Shield, ShieldCheck, ShieldOff, AlertTriangle,
+  Activity, Terminal, FileText, Globe,
+  Box, Boxes, ArrowRight, Zap
+} from 'lucide-vue-next'
 import Card from '../components/common/Card.vue'
-import StatCard from '../components/common/StatCard.vue'
 import EventsChart from '../components/charts/EventsChart.vue'
-import SeverityPie from '../components/charts/SeverityPie.vue'
 import { useEvents } from '../composables/useEvents'
 import { useAlerts } from '../composables/useAlerts'
 import { getSystemStats, type SystemStats } from '../lib/api'
 
-const { eventRate, totalEvents } = useEvents()
-const { alerts, getAlertsBySeverity } = useAlerts()
+const { eventRate } = useEvents()
+const { alerts, getAlertsBySeverity, getAlertsByAction } = useAlerts()
 
 const stats = ref<SystemStats>({
   processCount: 0,
@@ -21,7 +23,8 @@ const stats = ref<SystemStats>({
 })
 
 const severityCounts = computed(() => getAlertsBySeverity())
-const recentAlerts = computed(() => alerts.value.slice(0, 5))
+const actionCounts = computed(() => getAlertsByAction())
+const recentEvents = computed(() => alerts.value.slice(0, 5))
 
 const fetchStats = async () => {
   try {
@@ -33,21 +36,33 @@ const fetchStats = async () => {
 }
 
 const formatTime = (timestamp: number) => {
-  return new Date(timestamp).toLocaleTimeString('en-US', { 
-    hour12: false, 
+  return new Date(timestamp).toLocaleTimeString('en-US', {
+    hour12: false,
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit'
   })
 }
 
-const getSeverityClass = (severity: string) => {
-  switch (severity) {
-    case 'high': return 'severity-high'
-    case 'warning': return 'severity-warning'
-    default: return 'severity-info'
+const totalEvents = computed(() => eventRate.value.exec + eventRate.value.network + eventRate.value.file)
+const totalThreats = computed(() => actionCounts.value.blocked + actionCounts.value.alerted)
+
+const defenseRate = computed(() => {
+  if (totalThreats.value === 0) return 100
+  return Math.round((actionCounts.value.blocked / totalThreats.value) * 100)
+})
+
+// Donut chart values
+const donutStroke = computed(() => {
+  if (totalThreats.value === 0) return { blocked: 0, alerted: 0 }
+  const circumference = 2 * Math.PI * 45
+  const blockedPct = actionCounts.value.blocked / totalThreats.value
+  return {
+    blocked: blockedPct * circumference,
+    alerted: (1 - blockedPct) * circumference,
+    circumference
   }
-}
+})
 
 onMounted(() => {
   fetchStats()
@@ -57,197 +72,687 @@ onMounted(() => {
 
 <template>
   <div class="dashboard">
+    <!-- Header -->
     <div class="dashboard-header">
-      <h1 class="page-title">Dashboard</h1>
-      <span class="page-subtitle">Real-time security monitoring</span>
+      <div class="header-left">
+        <div class="brand">
+          <div class="brand-icon">
+            <Shield :size="28" />
+          </div>
+          <div class="brand-text">
+            <h1 class="brand-name">EulerGuard</h1>
+            <span class="brand-tagline">eBPF Security Platform</span>
+          </div>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="status-badge active">
+          <Zap :size="14" />
+          <span>LSM Hooks Active</span>
+        </div>
+        <div class="status-badge" :class="stats.probeStatus">
+          <span class="status-dot"></span>
+          <span>{{ stats.probeStatus === 'running' ? 'Monitoring' : 'Starting' }}</span>
+        </div>
+      </div>
     </div>
 
-    <!-- Stats Cards Row -->
-    <div class="stats-grid">
-      <StatCard 
-        :value="eventRate.exec + eventRate.network + eventRate.file"
-        label="Events / Second"
-        :icon="Activity"
-        color="info"
-      />
-      <StatCard 
-        :value="stats.alertCount"
-        label="Total Alerts"
-        :icon="AlertTriangle"
-        :color="stats.alertCount > 0 ? 'critical' : 'safe'"
-      />
-      <StatCard 
-        :value="stats.processCount"
-        label="Monitored Processes"
-        :icon="Box"
-      />
-      <StatCard 
-        :value="stats.workloadCount"
-        label="Workloads"
-        :icon="Boxes"
-        color="info"
-      />
+    <!-- Main Grid -->
+    <div class="main-grid">
+      <!-- Left Column: Defense Overview -->
+      <div class="defense-section">
+        <div class="section-header">
+          <ShieldCheck :size="18" />
+          <span>Active Defense</span>
+        </div>
+
+        <div class="defense-donut">
+          <svg viewBox="0 0 100 100" class="donut-svg">
+            <!-- Background circle -->
+            <circle cx="50" cy="50" r="45" class="donut-bg" />
+            <!-- Blocked arc -->
+            <circle cx="50" cy="50" r="45" class="donut-blocked"
+              :stroke-dasharray="`${donutStroke.blocked} ${donutStroke.circumference}`" />
+            <!-- Alerted arc -->
+            <circle cx="50" cy="50" r="45" class="donut-alerted"
+              :stroke-dasharray="`${donutStroke.alerted} ${donutStroke.circumference}`"
+              :stroke-dashoffset="`-${donutStroke.blocked}`" />
+          </svg>
+          <div class="donut-center">
+            <span class="donut-value">{{ defenseRate }}%</span>
+            <span class="donut-label">Protected</span>
+          </div>
+        </div>
+
+        <div class="defense-stats">
+          <div class="defense-stat blocked">
+            <ShieldOff :size="20" />
+            <div class="stat-content">
+              <span class="stat-value">{{ actionCounts.blocked }}</span>
+              <span class="stat-label">Blocked</span>
+            </div>
+          </div>
+          <div class="defense-stat alerted">
+            <AlertTriangle :size="20" />
+            <div class="stat-content">
+              <span class="stat-value">{{ actionCounts.alerted }}</span>
+              <span class="stat-label">Alerted</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center Column: Hook Monitors -->
+      <div class="monitors-section">
+        <div class="section-header">
+          <Activity :size="18" />
+          <span>LSM Hook Monitors</span>
+        </div>
+
+        <div class="monitors-grid">
+          <div class="monitor-card exec">
+            <div class="monitor-icon">
+              <Terminal :size="24" />
+            </div>
+            <div class="monitor-info">
+              <span class="monitor-name">Process Exec</span>
+              <span class="monitor-hook">bprm_check_security</span>
+            </div>
+            <div class="monitor-rate">
+              <span class="rate-value">{{ eventRate.exec }}</span>
+              <span class="rate-unit">/s</span>
+            </div>
+          </div>
+
+          <div class="monitor-card file">
+            <div class="monitor-icon">
+              <FileText :size="24" />
+            </div>
+            <div class="monitor-info">
+              <span class="monitor-name">File Access</span>
+              <span class="monitor-hook">file_open</span>
+            </div>
+            <div class="monitor-rate">
+              <span class="rate-value">{{ eventRate.file }}</span>
+              <span class="rate-unit">/s</span>
+            </div>
+          </div>
+
+          <div class="monitor-card network">
+            <div class="monitor-icon">
+              <Globe :size="24" />
+            </div>
+            <div class="monitor-info">
+              <span class="monitor-name">Network</span>
+              <span class="monitor-hook">socket_connect</span>
+            </div>
+            <div class="monitor-rate">
+              <span class="rate-value">{{ eventRate.network }}</span>
+              <span class="rate-unit">/s</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- System Stats -->
+        <div class="system-stats">
+          <div class="sys-stat">
+            <Box :size="16" />
+            <span class="sys-value">{{ stats.processCount }}</span>
+            <span class="sys-label">Processes</span>
+          </div>
+          <div class="sys-stat">
+            <Boxes :size="16" />
+            <span class="sys-value">{{ stats.workloadCount }}</span>
+            <span class="sys-label">Workloads</span>
+          </div>
+          <div class="sys-stat">
+            <Activity :size="16" />
+            <span class="sys-value">{{ totalEvents }}</span>
+            <span class="sys-label">Events/s</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Severity -->
+      <div class="severity-section">
+        <div class="section-header">
+          <AlertTriangle :size="18" />
+          <span>Threat Severity</span>
+        </div>
+
+        <div class="severity-list">
+          <div class="severity-item critical">
+            <div class="severity-info">
+              <span class="severity-dot"></span>
+              <span class="severity-name">Critical</span>
+            </div>
+            <span class="severity-count">{{ severityCounts.critical }}</span>
+          </div>
+          <div class="severity-item high">
+            <div class="severity-info">
+              <span class="severity-dot"></span>
+              <span class="severity-name">High</span>
+            </div>
+            <span class="severity-count">{{ severityCounts.high }}</span>
+          </div>
+          <div class="severity-item warning">
+            <div class="severity-info">
+              <span class="severity-dot"></span>
+              <span class="severity-name">Warning</span>
+            </div>
+            <span class="severity-count">{{ severityCounts.warning }}</span>
+          </div>
+          <div class="severity-item info">
+            <div class="severity-info">
+              <span class="severity-dot"></span>
+              <span class="severity-name">Info</span>
+            </div>
+            <span class="severity-count">{{ severityCounts.info }}</span>
+          </div>
+        </div>
+
+        <div class="severity-total">
+          <span class="total-label">Total Threats</span>
+          <span class="total-value">{{ totalThreats }}</span>
+        </div>
+      </div>
     </div>
 
-    <!-- Charts Row -->
-    <div class="charts-grid">
-      <Card title="Events Per Second" class="chart-card events-chart-card">
-        <EventsChart />
-      </Card>
-
-      <Card title="Alert Severity Distribution" class="chart-card severity-card">
-        <SeverityPie 
-          :high="severityCounts.high" 
-          :warning="severityCounts.warning" 
-          :info="severityCounts.info" 
-        />
-        <div class="severity-legend">
-          <div class="legend-item">
-            <span class="legend-dot high"></span>
-            <span class="legend-label">High</span>
-            <span class="legend-value">{{ severityCounts.high }}</span>
-          </div>
-          <div class="legend-item">
-            <span class="legend-dot warning"></span>
-            <span class="legend-label">Warning</span>
-            <span class="legend-value">{{ severityCounts.warning }}</span>
-          </div>
-          <div class="legend-item">
-            <span class="legend-dot info"></span>
-            <span class="legend-label">Info</span>
-            <span class="legend-value">{{ severityCounts.info }}</span>
-          </div>
-        </div>
-      </Card>
-    </div>
-
-    <!-- Recent Alerts -->
-    <Card class="alerts-card">
-      <template #default>
-        <div class="alerts-header">
-          <h3 class="alerts-title">Recent Alerts</h3>
-          <router-link to="/alerts" class="view-all">
-            View All <ArrowRight :size="16" />
-          </router-link>
-        </div>
-        <div class="alerts-list" v-if="recentAlerts.length > 0">
-          <div 
-            v-for="alert in recentAlerts" 
-            :key="alert.id"
-            class="alert-item"
-            :class="getSeverityClass(alert.severity)"
-          >
-            <span class="alert-indicator"></span>
-            <span class="alert-time font-mono">{{ formatTime(alert.timestamp) }}</span>
-            <span class="alert-rule">{{ alert.ruleName }}</span>
-            <span class="alert-process font-mono">{{ alert.processName }}</span>
-            <span class="alert-pid font-mono">PID {{ alert.pid }}</span>
-            <span class="alert-badge" :class="alert.severity">{{ alert.severity.toUpperCase() }}</span>
-          </div>
-        </div>
-        <div v-else class="no-alerts">
-          <span class="no-alerts-icon">✓</span>
-          <span class="no-alerts-text">No recent alerts</span>
-        </div>
-      </template>
+    <!-- Event Timeline -->
+    <Card title="Event Timeline" class="timeline-card">
+      <EventsChart />
     </Card>
+
+    <!-- Recent Events -->
+    <div class="events-section">
+      <div class="events-header">
+        <div class="events-title">
+          <Shield :size="18" />
+          <span>Recent Security Events</span>
+        </div>
+        <router-link to="/alerts" class="view-all">
+          View All
+          <ArrowRight :size="16" />
+        </router-link>
+      </div>
+
+      <div class="events-table" v-if="recentEvents.length > 0">
+        <div v-for="event in recentEvents" :key="event.id" class="event-row" :class="{ blocked: event.blocked }">
+          <div class="event-action">
+            <span class="action-badge" :class="event.blocked ? 'blocked' : 'alerted'">
+              <component :is="event.blocked ? ShieldOff : AlertTriangle" :size="12" />
+              {{ event.blocked ? 'BLOCKED' : 'ALERT' }}
+            </span>
+          </div>
+          <div class="event-time">{{ formatTime(event.timestamp) }}</div>
+          <div class="event-rule">{{ event.ruleName }}</div>
+          <div class="event-process">{{ event.processName }}</div>
+          <div class="event-severity">
+            <span class="severity-tag" :class="event.severity">
+              {{ event.severity }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="events-empty">
+        <ShieldCheck :size="48" />
+        <span class="empty-title">All Clear</span>
+        <span class="empty-text">No security events detected</span>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
   max-width: 1400px;
 }
 
+/* Header */
 .dashboard-header {
-  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
-.page-title {
-  font-size: 24px;
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, var(--accent-primary), #3b82f6);
+  border-radius: var(--radius-md);
+  color: #fff;
+}
+
+.brand-name {
+  font-size: 22px;
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
+  letter-spacing: -0.5px;
 }
 
-.page-subtitle {
-  font-size: 14px;
+.brand-tagline {
+  font-size: 12px;
   color: var(--text-muted);
 }
 
-/* Stats Grid */
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-@media (max-width: 1200px) {
-  .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-/* Charts Grid */
-.charts-grid {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.chart-card {
-  min-height: 340px;
-}
-
-.severity-card :deep(.card-content) {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 20px;
-}
-
-.severity-legend {
-  display: flex;
-  gap: 24px;
-  margin-top: 16px;
-}
-
-.legend-item {
+.header-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
-.legend-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-
-.legend-dot.high { background: var(--status-critical); }
-.legend-dot.warning { background: var(--status-warning); }
-.legend-dot.info { background: var(--status-info); }
-
-.legend-label {
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
   font-size: 12px;
   color: var(--text-secondary);
 }
 
-.legend-value {
+.status-badge.active {
+  background: var(--status-safe-dim);
+  border-color: var(--status-safe);
+  color: var(--status-safe);
+}
+
+.status-badge.running {
+  border-color: var(--status-safe);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.status-badge.running .status-dot {
+  background: var(--status-safe);
+  box-shadow: 0 0 8px var(--status-safe);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Main Grid */
+.main-grid {
+  display: grid;
+  grid-template-columns: 260px 1fr 220px;
+  gap: 20px;
+}
+
+/* Section Headers */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Defense Section */
+.defense-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+}
+
+.defense-donut {
+  position: relative;
+  width: 180px;
+  height: 180px;
+  margin: 0 auto 20px;
+}
+
+.donut-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.donut-bg {
+  fill: none;
+  stroke: var(--bg-overlay);
+  stroke-width: 8;
+}
+
+.donut-blocked {
+  fill: none;
+  stroke: var(--status-blocked);
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.5s ease;
+}
+
+.donut-alerted {
+  fill: none;
+  stroke: var(--status-warning);
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: all 0.5s ease;
+}
+
+.donut-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.donut-value {
+  display: block;
+  font-size: 32px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--status-safe);
+}
+
+.donut-label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.defense-stats {
+  display: flex;
+  gap: 12px;
+}
+
+.defense-stat {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-md);
+}
+
+.defense-stat.blocked {
+  color: var(--status-blocked);
+}
+
+.defense-stat.alerted {
+  color: var(--status-warning);
+}
+
+.stat-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: inherit;
+}
+
+.stat-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+/* Monitors Section */
+.monitors-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+}
+
+.monitors-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.monitor-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 16px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  transition: all var(--transition-fast);
+}
+
+.monitor-card:hover {
+  border-color: var(--border-default);
+  transform: translateY(-2px);
+}
+
+.monitor-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+}
+
+.monitor-card.exec .monitor-icon {
+  background: rgba(96, 165, 250, 0.15);
+  color: var(--chart-exec);
+}
+
+.monitor-card.file .monitor-icon {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--chart-file);
+}
+
+.monitor-card.network .monitor-icon {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--chart-network);
+}
+
+.monitor-info {
+  text-align: center;
+}
+
+.monitor-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.monitor-hook {
+  display: block;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.monitor-rate {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.rate-value {
+  font-size: 24px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.rate-unit {
   font-size: 12px;
+  color: var(--text-muted);
+}
+
+.system-stats {
+  display: flex;
+  justify-content: space-around;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.sys-stat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.sys-value {
+  font-size: 16px;
   font-weight: 600;
   font-family: var(--font-mono);
   color: var(--text-primary);
 }
 
-/* Alerts Card */
-.alerts-card :deep(.card-content) {
-  padding: 0;
+.sys-label {
+  font-size: 11px;
 }
 
-.alerts-header {
+/* Severity Section */
+.severity-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+}
+
+.severity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.severity-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-md);
+}
+
+.severity-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.severity-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.severity-item.critical .severity-dot {
+  background: var(--status-blocked);
+}
+
+.severity-item.high .severity-dot {
+  background: var(--status-critical);
+}
+
+.severity-item.warning .severity-dot {
+  background: var(--status-warning);
+}
+
+.severity-item.info .severity-dot {
+  background: var(--status-info);
+}
+
+.severity-name {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.severity-count {
+  font-size: 16px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.severity-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.total-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.total-value {
+  font-size: 24px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+/* Timeline Card */
+.timeline-card {
+  min-height: 280px;
+}
+
+/* Events Section */
+.events-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.events-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -255,11 +760,13 @@ onMounted(() => {
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.alerts-title {
+.events-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
-  margin: 0;
 }
 
 .view-all {
@@ -274,46 +781,61 @@ onMounted(() => {
   color: var(--accent-primary-hover);
 }
 
-.alerts-list {
+.events-table {
   display: flex;
   flex-direction: column;
 }
 
-.alert-item {
+.event-row {
   display: grid;
-  grid-template-columns: 4px 80px 1fr 120px 80px 80px;
+  grid-template-columns: 100px 80px 1fr 150px 80px;
   align-items: center;
   gap: 16px;
-  padding: 12px 20px;
+  padding: 14px 20px;
   border-bottom: 1px solid var(--border-subtle);
   transition: background var(--transition-fast);
 }
 
-.alert-item:last-child {
+.event-row:last-child {
   border-bottom: none;
 }
 
-.alert-item:hover {
+.event-row:hover {
   background: var(--bg-hover);
 }
 
-.alert-indicator {
-  width: 4px;
-  height: 32px;
-  border-radius: 2px;
-  background: var(--text-muted);
+.event-row.blocked {
+  background: linear-gradient(90deg, var(--status-blocked-dim), transparent 40%);
 }
 
-.severity-high .alert-indicator { background: var(--status-critical); }
-.severity-warning .alert-indicator { background: var(--status-warning); }
-.severity-info .alert-indicator { background: var(--status-info); }
+.action-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
 
-.alert-time {
+.action-badge.blocked {
+  background: var(--status-blocked);
+  color: #fff;
+}
+
+.action-badge.alerted {
+  background: var(--status-warning-dim);
+  color: var(--status-warning);
+}
+
+.event-time {
   font-size: 12px;
+  font-family: var(--font-mono);
   color: var(--text-muted);
 }
 
-.alert-rule {
+.event-rule {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
@@ -322,56 +844,122 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.alert-process {
+.event-process {
   font-size: 12px;
+  font-family: var(--font-mono);
   color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.alert-pid {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.alert-badge {
-  padding: 4px 8px;
+.severity-tag {
+  display: inline-block;
+  padding: 3px 8px;
   border-radius: var(--radius-sm);
   font-size: 10px;
   font-weight: 600;
-  text-align: center;
+  text-transform: uppercase;
 }
 
-.alert-badge.high {
+.severity-tag.critical {
+  background: var(--status-blocked-dim);
+  color: var(--status-blocked);
+}
+
+.severity-tag.high {
   background: var(--status-critical-dim);
   color: var(--status-critical);
 }
 
-.alert-badge.warning {
+.severity-tag.warning {
   background: var(--status-warning-dim);
   color: var(--status-warning);
 }
 
-.alert-badge.info {
+.severity-tag.info {
   background: var(--status-info-dim);
   color: var(--status-info);
 }
 
-.no-alerts {
+.events-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 48px 20px;
-  gap: 8px;
-}
-
-.no-alerts-icon {
-  font-size: 32px;
+  gap: 12px;
   color: var(--status-safe);
 }
 
-.no-alerts-text {
-  font-size: 14px;
+.empty-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.empty-text {
+  font-size: 13px;
   color: var(--text-muted);
 }
-</style>
 
+/* Responsive */
+@media (max-width: 1200px) {
+  .main-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .defense-section {
+    grid-column: 1 / -1;
+  }
+
+  .defense-donut {
+    width: 140px;
+    height: 140px;
+  }
+
+  .monitors-section {
+    grid-column: 1 / 2;
+  }
+
+  .severity-section {
+    grid-column: 2 / 3;
+  }
+}
+
+@media (max-width: 900px) {
+  .main-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .monitors-section,
+  .severity-section {
+    grid-column: 1;
+  }
+
+  .monitors-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .event-row {
+    grid-template-columns: 90px 1fr 70px;
+  }
+
+  .event-time,
+  .event-process {
+    display: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .dashboard-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .header-right {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+</style>

@@ -82,22 +82,28 @@ func (b *Bridge) HandleExec(ev events.ExecEvent) {
 		Parent:    pcomm,
 	}
 
-	// Check for allow rules first
 	if _, _, allowed := re.MatchExec(processed); allowed {
 		return
 	}
 
 	for _, alert := range re.CollectExecAlerts(processed) {
+		blocked := ev.Blocked == 1
+		severity := alert.Rule.Severity
+		if blocked && severity != "critical" {
+			severity = "critical"
+		}
 		b.emitAlert(FrontendAlert{
 			ID:          fmt.Sprintf("exec-%d-%d", ev.PID, time.Now().UnixNano()),
 			Timestamp:   time.Now().UnixMilli(),
-			Severity:    alert.Rule.Severity,
+			Severity:    severity,
 			RuleName:    alert.Rule.Name,
 			Description: alert.Rule.Description,
 			PID:         ev.PID,
 			ProcessName: comm,
 			ParentName:  pcomm,
 			CgroupID:    strconv.FormatUint(ev.CgroupID, 10),
+			Action:      string(alert.Rule.Action),
+			Blocked:     blocked,
 		})
 	}
 }
@@ -112,7 +118,6 @@ func (b *Bridge) HandleFileOpen(ev events.FileOpenEvent, filename string) {
 	prof := b.profiler
 	b.mu.RUnlock()
 
-	// Forward to profiler if active
 	if prof != nil && prof.IsActive() {
 		prof.HandleFileOpen(ev, filename)
 	}
@@ -133,15 +138,22 @@ func (b *Bridge) HandleFileOpen(ev events.FileOpenEvent, filename string) {
 		}
 	}
 
+	blocked := ev.Blocked == 1
+	severity := rule.Severity
+	if blocked && severity != "critical" {
+		severity = "critical"
+	}
 	b.emitAlert(FrontendAlert{
 		ID:          fmt.Sprintf("file-%d-%d", ev.PID, time.Now().UnixNano()),
 		Timestamp:   time.Now().UnixMilli(),
-		Severity:    rule.Severity,
+		Severity:    severity,
 		RuleName:    rule.Name,
 		Description: fmt.Sprintf("%s: %s", rule.Description, filename),
 		PID:         ev.PID,
 		ProcessName: processName,
 		CgroupID:    strconv.FormatUint(ev.CgroupID, 10),
+		Action:      string(rule.Action),
+		Blocked:     blocked,
 	})
 }
 
@@ -155,7 +167,6 @@ func (b *Bridge) HandleConnect(ev events.ConnectEvent) {
 	prof := b.profiler
 	b.mu.RUnlock()
 
-	// Forward to profiler if active
 	if prof != nil && prof.IsActive() {
 		prof.HandleConnect(ev)
 	}
@@ -176,22 +187,27 @@ func (b *Bridge) HandleConnect(ev events.ConnectEvent) {
 		}
 	}
 
+	blocked := ev.Blocked == 1
+	severity := rule.Severity
+	if blocked && severity != "critical" {
+		severity = "critical"
+	}
 	b.emitAlert(FrontendAlert{
 		ID:          fmt.Sprintf("net-%d-%d", ev.PID, time.Now().UnixNano()),
 		Timestamp:   time.Now().UnixMilli(),
-		Severity:    rule.Severity,
+		Severity:    severity,
 		RuleName:    rule.Name,
 		Description: rule.Description,
 		PID:         ev.PID,
 		ProcessName: processName,
 		CgroupID:    strconv.FormatUint(ev.CgroupID, 10),
+		Action:      string(rule.Action),
+		Blocked:     blocked,
 	})
 }
 
 func (b *Bridge) emitAlert(alert FrontendAlert) {
 	b.stats.AddAlert(alert)
-
-	// Record alert in workload registry for per-workload tracking
 	if b.workloadRegistry != nil {
 		if cgroupID, err := strconv.ParseUint(alert.CgroupID, 10, 64); err == nil {
 			b.workloadRegistry.RecordAlert(cgroupID)

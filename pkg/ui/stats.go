@@ -167,7 +167,6 @@ func (s *Stats) UnsubscribeEvents(ch chan any) {
 	s.eventSubsMu.Unlock()
 }
 
-// PublishEvent sends an event to all subscribers
 func (s *Stats) PublishEvent(event any) {
 	s.eventSubsMu.RLock()
 	defer s.eventSubsMu.RUnlock()

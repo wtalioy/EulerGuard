@@ -38,6 +38,8 @@ func matchPID(pattern uint32, pid uint32) bool {
 	return pattern == 0 || pid == pattern
 }
 
+
+// Returns: matched (any rule matched), rule (the matching rule), allowed (should the action be allowed)
 func filterRulesByAction[T any](rules []*Rule, matchFn func(*Rule, T) bool, event T) (matched bool, rule *Rule, allowed bool) {
 	for _, r := range rules {
 		if r.Action == ActionAllow && matchFn(r, event) {
@@ -45,7 +47,12 @@ func filterRulesByAction[T any](rules []*Rule, matchFn func(*Rule, T) bool, even
 		}
 	}
 	for _, r := range rules {
-		if r.Action != ActionAllow && matchFn(r, event) {
+		if r.Action == ActionBlock && matchFn(r, event) {
+			return true, r, false
+		}
+	}
+	for _, r := range rules {
+		if r.Action == ActionAlert && matchFn(r, event) {
 			return true, r, false
 		}
 	}

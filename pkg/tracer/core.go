@@ -20,14 +20,14 @@ import (
 )
 
 type Core struct {
-	Objs             *ebpf.ExecveObjects
+	Objs             *ebpf.LSMObjects
 	Links            []link.Link
 	Reader           *ringbuf.Reader
 	Rules            []rules.Rule
 	RuleEngine       *rules.Engine
 	ProcessTree      *proc.ProcessTree
 	WorkloadRegistry *workload.Registry
-	RulesPath        string // Path to rules file for reloading
+	RulesPath        string
 }
 
 func Init(opts config.Options) (*Core, error) {
@@ -41,16 +41,16 @@ func Init(opts config.Options) (*Core, error) {
 
 	c.WorkloadRegistry = workload.NewRegistry(1000)
 
-	objs, err := ebpf.LoadExecveObjects(opts.BPFPath, opts.RingBufferSize)
+	objs, err := ebpf.LoadLSMObjects(opts.BPFPath, opts.RingBufferSize)
 	if err != nil {
-		return nil, fmt.Errorf("load eBPF objects: %w", err)
+		return nil, fmt.Errorf("load eBPF LSM objects: %w", err)
 	}
 	c.Objs = objs
 
-	links, err := AttachTracepoints(objs)
+	links, err := AttachLSMHooks(objs)
 	if err != nil {
 		objs.Close()
-		return nil, fmt.Errorf("attach tracepoints: %w", err)
+		return nil, fmt.Errorf("attach LSM hooks: %w", err)
 	}
 	c.Links = links
 
@@ -68,6 +68,9 @@ func Init(opts config.Options) (*Core, error) {
 	if err := PopulateMonitoredPaths(objs.MonitoredPaths, c.Rules, opts.RulesPath); err != nil {
 		log.Printf("Warning: failed to populate monitored paths: %v", err)
 	}
+	if err := PopulateBlockedPorts(objs.BlockedPorts, c.Rules); err != nil {
+		log.Printf("Warning: failed to populate blocked ports: %v", err)
+	}
 
 	return c, nil
 }
@@ -77,9 +80,16 @@ func (c *Core) ReloadRules() error {
 	c.Rules = newRules
 	c.RuleEngine = newEngine
 
-	if c.Objs != nil && c.Objs.MonitoredPaths != nil {
-		if err := RepopulateMonitoredPaths(c.Objs.MonitoredPaths, c.Rules, c.RulesPath); err != nil {
-			return fmt.Errorf("failed to repopulate monitored paths: %w", err)
+	if c.Objs != nil {
+		if c.Objs.MonitoredPaths != nil {
+			if err := RepopulateMonitoredPaths(c.Objs.MonitoredPaths, c.Rules, c.RulesPath); err != nil {
+				return fmt.Errorf("failed to repopulate monitored paths: %w", err)
+			}
+		}
+		if c.Objs.BlockedPorts != nil {
+			if err := RepopulateBlockedPorts(c.Objs.BlockedPorts, c.Rules); err != nil {
+				return fmt.Errorf("failed to repopulate blocked ports: %w", err)
+			}
 		}
 	}
 
@@ -108,6 +118,25 @@ func RepopulateMonitoredPaths(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPat
 	return PopulateMonitoredPaths(bpfMap, ruleList, rulesPath)
 }
 
+func RepopulateBlockedPorts(bpfMap *cebpf.Map, ruleList []rules.Rule) error {
+	if bpfMap == nil {
+		return fmt.Errorf("blocked_ports map is nil")
+	}
+
+	var key uint16
+	var val uint8
+	iter := bpfMap.Iterate()
+	keysToDelete := make([]uint16, 0)
+	for iter.Next(&key, &val) {
+		keysToDelete = append(keysToDelete, key)
+	}
+	for _, k := range keysToDelete {
+		_ = bpfMap.Delete(k)
+	}
+
+	return PopulateBlockedPorts(bpfMap, ruleList)
+}
+
 func (c *Core) Close() {
 	if c.Reader != nil {
 		c.Reader.Close()
@@ -118,29 +147,36 @@ func (c *Core) Close() {
 	}
 }
 
-func AttachTracepoints(objs *ebpf.ExecveObjects) ([]link.Link, error) {
+func AttachLSMHooks(objs *ebpf.LSMObjects) ([]link.Link, error) {
 	var links []link.Link
 
-	tp, err := link.Tracepoint("sched", "sched_process_exec", objs.HandleExec, nil)
+	lsmBprm, err := link.AttachLSM(link.LSMOptions{
+		Program: objs.LsmBprmCheck,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("attach exec tracepoint: %w", err)
+		return nil, fmt.Errorf("attach bprm_check_security LSM: %w", err)
 	}
-	links = append(links, tp)
+	links = append(links, lsmBprm)
 
-	tpOpenat, err := link.Tracepoint("syscalls", "sys_enter_openat", objs.TracepointOpenat, nil)
-	if err != nil {
-		CloseLinks(links)
-		return nil, fmt.Errorf("attach openat tracepoint: %w", err)
-	}
-	links = append(links, tpOpenat)
-
-	tpConnect, err := link.Tracepoint("syscalls", "sys_enter_connect", objs.TracepointConnect, nil)
+	lsmFileOpen, err := link.AttachLSM(link.LSMOptions{
+		Program: objs.LsmFileOpen,
+	})
 	if err != nil {
 		CloseLinks(links)
-		return nil, fmt.Errorf("attach connect tracepoint: %w", err)
+		return nil, fmt.Errorf("attach file_open LSM: %w", err)
 	}
-	links = append(links, tpConnect)
+	links = append(links, lsmFileOpen)
 
+	lsmSocketConnect, err := link.AttachLSM(link.LSMOptions{
+		Program: objs.LsmSocketConnect,
+	})
+	if err != nil {
+		CloseLinks(links)
+		return nil, fmt.Errorf("attach socket_connect LSM: %w", err)
+	}
+	links = append(links, lsmSocketConnect)
+
+	log.Printf("Attached 3 BPF LSM hooks for active defense")
 	return links, nil
 }
 
@@ -166,33 +202,97 @@ func PopulateMonitoredPaths(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPath 
 		return fmt.Errorf("monitored_paths map is nil")
 	}
 
-	pathSet := make(map[string]struct{})
+	pathActions := make(map[string]uint8)
 	for _, rule := range ruleList {
+		var path string
 		if rule.Match.Filename != "" {
-			pathSet[rule.Match.Filename] = struct{}{}
+			path = rule.Match.Filename
+		} else if rule.Match.FilePath != "" {
+			path = rule.Match.FilePath
+		} else {
+			continue
 		}
-		if rule.Match.FilePath != "" {
-			pathSet[rule.Match.FilePath] = struct{}{}
+
+		var action uint8
+		if rule.Action == rules.ActionBlock {
+			action = rules.BPFActionBlock
+		} else {
+			action = rules.BPFActionMonitor
+		}
+
+		if existing, ok := pathActions[path]; !ok || action > existing {
+			pathActions[path] = action
 		}
 	}
 
-	if len(pathSet) == 0 {
+	if len(pathActions) == 0 {
 		log.Printf("Warning: No file access rules found in %s", rulesPath)
 		return nil
 	}
 
-	count := 0
-	value := uint8(1)
-	for path := range pathSet {
+	countMonitor := 0
+	countBlock := 0
+	for path, action := range pathActions {
 		key := make([]byte, events.PathMaxLen)
 		copy(key, []byte(path))
-		if err := bpfMap.Put(key, value); err != nil {
+		if err := bpfMap.Put(key, action); err != nil {
 			return fmt.Errorf("add path %q to BPF map: %w", path, err)
 		}
-		count++
+		if action == rules.BPFActionBlock {
+			countBlock++
+		} else {
+			countMonitor++
+		}
 	}
 
-	log.Printf("Populated BPF map with %d monitored paths", count)
+	log.Printf("Populated BPF map with %d monitored paths (%d block, %d monitor)",
+		len(pathActions), countBlock, countMonitor)
+	return nil
+}
+
+func PopulateBlockedPorts(bpfMap *cebpf.Map, ruleList []rules.Rule) error {
+	if bpfMap == nil {
+		return fmt.Errorf("blocked_ports map is nil")
+	}
+
+	portActions := make(map[uint16]uint8)
+	for _, rule := range ruleList {
+		if rule.Match.DestPort == 0 {
+			continue
+		}
+
+		var action uint8
+		if rule.Action == rules.ActionBlock {
+			action = rules.BPFActionBlock
+		} else {
+			action = rules.BPFActionMonitor
+		}
+
+		port := rule.Match.DestPort
+		if existing, ok := portActions[port]; !ok || action > existing {
+			portActions[port] = action
+		}
+	}
+
+	if len(portActions) == 0 {
+		return nil
+	}
+
+	countMonitor := 0
+	countBlock := 0
+	for port, action := range portActions {
+		if err := bpfMap.Put(port, action); err != nil {
+			return fmt.Errorf("add port %d to BPF map: %w", port, err)
+		}
+		if action == rules.BPFActionBlock {
+			countBlock++
+		} else {
+			countMonitor++
+		}
+	}
+
+	log.Printf("Populated BPF map with %d monitored ports (%d block, %d monitor)",
+		len(portActions), countBlock, countMonitor)
 	return nil
 }
 

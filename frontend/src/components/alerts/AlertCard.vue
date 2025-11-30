@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { ShieldOff, AlertTriangle } from 'lucide-vue-next'
 import type { Alert } from '../../lib/api'
 
 const props = defineProps<{
@@ -13,10 +14,16 @@ defineEmits<{
 
 const severityLabel = computed(() => {
   switch (props.alert.severity) {
+    case 'critical': return 'CRIT'
     case 'high': return 'HIGH'
     case 'warning': return 'WARN'
     default: return 'INFO'
   }
+})
+
+const actionLabel = computed(() => {
+  if (props.alert.blocked) return 'BLOCKED'
+  return props.alert.action?.toUpperCase() || 'ALERT'
 })
 
 const formatTime = (timestamp: number) => {
@@ -32,13 +39,26 @@ const formatTime = (timestamp: number) => {
 <template>
   <div 
     class="alert-card" 
-    :class="[`severity-${alert.severity}`, { 'is-selected': isSelected }]"
+    :class="[
+      `severity-${alert.severity}`, 
+      { 'is-selected': isSelected, 'is-blocked': alert.blocked }
+    ]"
     @click="$emit('select', alert)"
   >
     <div class="alert-indicator"></div>
     <div class="alert-content">
       <div class="alert-header">
-        <span class="alert-severity" :class="alert.severity">{{ severityLabel }}</span>
+        <div class="alert-badges">
+          <span class="alert-severity" :class="alert.severity">{{ severityLabel }}</span>
+          <span v-if="alert.blocked" class="alert-action blocked">
+            <ShieldOff :size="10" />
+            {{ actionLabel }}
+          </span>
+          <span v-else class="alert-action alerted">
+            <AlertTriangle :size="10" />
+            ALERT
+          </span>
+        </div>
         <span class="alert-time font-mono">{{ formatTime(alert.timestamp) }}</span>
       </div>
       <div class="alert-title">{{ alert.ruleName }}</div>
@@ -76,13 +96,30 @@ const formatTime = (timestamp: number) => {
   background: var(--text-muted);
 }
 
+.severity-critical .alert-indicator { background: var(--status-blocked); }
 .severity-high .alert-indicator { background: var(--status-critical); }
 .severity-warning .alert-indicator { background: var(--status-warning); }
 .severity-info .alert-indicator { background: var(--status-info); }
 
+/* Blocked indicator override - pulsing effect */
+.is-blocked .alert-indicator {
+  background: var(--status-blocked);
+  animation: blocked-pulse 2s ease-in-out infinite;
+}
+
+@keyframes blocked-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .alert-card.is-selected {
   background: var(--bg-overlay);
   box-shadow: 0 0 0 2px var(--border-focus);
+}
+
+.severity-critical.is-selected,
+.is-blocked.is-selected {
+  box-shadow: 0 0 0 2px var(--status-blocked-glow), 0 0 20px var(--status-blocked-glow);
 }
 
 .severity-high.is-selected {
@@ -105,12 +142,23 @@ const formatTime = (timestamp: number) => {
   justify-content: space-between;
 }
 
+.alert-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .alert-severity {
   padding: 2px 8px;
   border-radius: var(--radius-sm);
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
+}
+
+.alert-severity.critical {
+  background: var(--status-blocked-dim);
+  color: var(--status-blocked);
 }
 
 .alert-severity.high {
@@ -126,6 +174,29 @@ const formatTime = (timestamp: number) => {
 .alert-severity.info {
   background: var(--status-info-dim);
   color: var(--status-info);
+}
+
+.alert-action {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.alert-action.blocked {
+  background: var(--status-blocked-dim);
+  color: var(--status-blocked);
+  border: 1px solid var(--status-blocked);
+}
+
+.alert-action.alerted {
+  background: var(--status-warning-dim);
+  color: var(--status-warning);
+  opacity: 0.7;
 }
 
 .alert-time {
@@ -169,6 +240,15 @@ const formatTime = (timestamp: number) => {
   border-radius: var(--radius-sm);
 }
 
+/* Blocked card has subtle background tint */
+.is-blocked {
+  background: linear-gradient(135deg, var(--bg-elevated) 0%, rgba(220, 38, 38, 0.05) 100%);
+}
+
+.is-blocked:hover {
+  background: linear-gradient(135deg, var(--bg-overlay) 0%, rgba(220, 38, 38, 0.08) 100%);
+}
+
 /* New alert pulse animation */
 @keyframes alert-pulse {
   0%, 100% { 
@@ -182,5 +262,8 @@ const formatTime = (timestamp: number) => {
 .alert-card.severity-high.is-new {
   animation: alert-pulse 0.6s ease-out 2;
 }
-</style>
 
+.alert-card.is-blocked.is-new {
+  animation: alert-pulse 0.6s ease-out 3;
+}
+</style>

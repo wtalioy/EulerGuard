@@ -1,20 +1,21 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { AlertTriangle, Filter, Search, X } from 'lucide-vue-next'
+import { Shield, ShieldOff, AlertTriangle, Filter, Search, X } from 'lucide-vue-next'
 import AlertCard from '../components/alerts/AlertCard.vue'
 import AttackChain from '../components/topology/AttackChain.vue'
 import { useAlerts } from '../composables/useAlerts'
 import { getAncestors, type Alert, type ProcessInfo } from '../lib/api'
 
 const route = useRoute()
-const { alerts, getAlertsBySeverity } = useAlerts()
+const { alerts, getAlertsBySeverity, getAlertsByAction } = useAlerts()
 
 // State
 const selectedAlert = ref<Alert | null>(null)
 const ancestors = ref<ProcessInfo[]>([])
 const loadingAncestors = ref(false)
 const filterSeverity = ref<string>('all')
+const filterAction = ref<string>('all')
 const filterWorkload = ref<string>('')
 const searchQuery = ref('')
 
@@ -44,6 +45,13 @@ const filteredAlerts = computed(() => {
     result = result.filter(a => a.severity === filterSeverity.value)
   }
 
+  // Filter by action (blocked vs alerted)
+  if (filterAction.value === 'blocked') {
+    result = result.filter(a => a.blocked)
+  } else if (filterAction.value === 'alerted') {
+    result = result.filter(a => !a.blocked)
+  }
+
   // Filter by search query
   if (searchQuery.value.trim()) {
     const query = searchQuery.value.toLowerCase()
@@ -64,6 +72,7 @@ const clearWorkloadFilter = () => {
 
 // Stats
 const severityCounts = computed(() => getAlertsBySeverity())
+const actionCounts = computed(() => getAlertsByAction())
 
 // Select alert and load ancestors
 const selectAlert = async (alert: Alert) => {
@@ -112,23 +121,44 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
     <div class="page-header">
       <div class="header-content">
         <h1 class="page-title">
-          <AlertTriangle :size="24" class="title-icon" />
-          Threat Hunting
+          <Shield :size="24" class="title-icon" />
+          Security Events
         </h1>
-        <span class="page-subtitle">Alert analysis and attack chain visualization</span>
+        <span class="page-subtitle">Real-time threat detection and active defense monitoring</span>
       </div>
       <div class="header-stats">
-        <div class="stat-badge high">
-          <span class="stat-value">{{ severityCounts.high }}</span>
-          <span class="stat-label">High</span>
+        <!-- Action Stats (Blocked vs Alerted) -->
+        <div class="stat-group action-stats">
+          <div class="stat-badge blocked" :class="{ active: filterAction === 'blocked' }" @click="filterAction = filterAction === 'blocked' ? 'all' : 'blocked'">
+            <ShieldOff :size="14" class="stat-icon" />
+            <span class="stat-value">{{ actionCounts.blocked }}</span>
+            <span class="stat-label">Blocked</span>
+          </div>
+          <div class="stat-badge alerted" :class="{ active: filterAction === 'alerted' }" @click="filterAction = filterAction === 'alerted' ? 'all' : 'alerted'">
+            <AlertTriangle :size="14" class="stat-icon" />
+            <span class="stat-value">{{ actionCounts.alerted }}</span>
+            <span class="stat-label">Alerted</span>
+          </div>
         </div>
-        <div class="stat-badge warning">
-          <span class="stat-value">{{ severityCounts.warning }}</span>
-          <span class="stat-label">Warning</span>
-        </div>
-        <div class="stat-badge info">
-          <span class="stat-value">{{ severityCounts.info }}</span>
-          <span class="stat-label">Info</span>
+
+        <!-- Severity Stats -->
+        <div class="stat-group severity-stats">
+          <div class="stat-badge critical" :class="{ active: filterSeverity === 'critical' }" @click="filterSeverity = filterSeverity === 'critical' ? 'all' : 'critical'">
+            <span class="stat-value">{{ severityCounts.critical }}</span>
+            <span class="stat-label">Critical</span>
+          </div>
+          <div class="stat-badge high" :class="{ active: filterSeverity === 'high' }" @click="filterSeverity = filterSeverity === 'high' ? 'all' : 'high'">
+            <span class="stat-value">{{ severityCounts.high }}</span>
+            <span class="stat-label">High</span>
+          </div>
+          <div class="stat-badge warning" :class="{ active: filterSeverity === 'warning' }" @click="filterSeverity = filterSeverity === 'warning' ? 'all' : 'warning'">
+            <span class="stat-value">{{ severityCounts.warning }}</span>
+            <span class="stat-label">Warning</span>
+          </div>
+          <div class="stat-badge info" :class="{ active: filterSeverity === 'info' }" @click="filterSeverity = filterSeverity === 'info' ? 'all' : 'info'">
+            <span class="stat-value">{{ severityCounts.info }}</span>
+            <span class="stat-label">Info</span>
+          </div>
         </div>
       </div>
     </div>
@@ -138,7 +168,7 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
       <!-- Left Panel: Alert Queue -->
       <div class="alert-queue">
         <div class="queue-header">
-          <h2 class="queue-title">Alert Queue</h2>
+          <h2 class="queue-title">Event Queue</h2>
           <span class="queue-count">{{ filteredAlerts.length }}</span>
         </div>
 
@@ -149,7 +179,7 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
             <input 
               v-model="searchQuery"
               type="text" 
-              placeholder="Search alerts..."
+              placeholder="Search events..."
               class="search-input"
             />
             <button 
@@ -162,32 +192,32 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
           </div>
           
           <div class="filter-row">
-            <div class="filter-severity">
+            <div class="filter-group">
               <Filter :size="14" class="filter-icon" />
-              <select v-model="filterSeverity" class="severity-select">
+              <select v-model="filterSeverity" class="filter-select">
                 <option value="all">All Severity</option>
+                <option value="critical">Critical</option>
                 <option value="high">High</option>
                 <option value="warning">Warning</option>
                 <option value="info">Info</option>
               </select>
             </div>
             
-            <div class="filter-workload">
-              <input 
-                v-model="filterWorkload"
-                type="text" 
-                placeholder="Cgroup ID..."
-                class="workload-input"
-              />
-              <button 
-                v-if="filterWorkload" 
-                class="workload-clear" 
-                @click="clearWorkloadFilter"
-                title="Clear workload filter"
-              >
-                <X :size="12" />
-              </button>
+            <div class="filter-group">
+              <select v-model="filterAction" class="filter-select action-select">
+                <option value="all">All Actions</option>
+                <option value="blocked">Blocked Only</option>
+                <option value="alerted">Alerted Only</option>
+              </select>
             </div>
+          </div>
+
+          <div v-if="filterWorkload" class="filter-workload-active">
+            <span class="workload-label">Workload:</span>
+            <code class="workload-id">{{ filterWorkload.slice(0, 12) }}...</code>
+            <button class="workload-clear" @click="clearWorkloadFilter" title="Clear workload filter">
+              <X :size="12" />
+            </button>
           </div>
         </div>
 
@@ -196,7 +226,10 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
           <div v-if="filteredAlerts.length === 0" class="queue-empty">
             <span class="empty-icon">✓</span>
             <span class="empty-text">
-              {{ alerts.length === 0 ? 'No alerts detected' : 'No matching alerts' }}
+              {{ alerts.length === 0 ? 'No security events detected' : 'No matching events' }}
+            </span>
+            <span v-if="alerts.length > 0" class="empty-hint">
+              Try adjusting your filters
             </span>
           </div>
           <AlertCard
@@ -224,7 +257,7 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
 
 <style scoped>
 .alerts-page {
-  height: calc(100vh - var(--topbar-height) - var(--footer-height) - 48px); /* viewport - topbar - footer - padding */
+  height: calc(100vh - var(--topbar-height) - var(--footer-height) - 48px);
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -256,7 +289,7 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
 }
 
 .title-icon {
-  color: var(--status-warning);
+  color: var(--accent-primary);
 }
 
 .page-subtitle {
@@ -266,32 +299,65 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
 
 .header-stats {
   display: flex;
-  gap: 12px;
+  gap: 20px;
+}
+
+.stat-group {
+  display: flex;
+  gap: 8px;
+}
+
+.action-stats {
+  padding-right: 20px;
+  border-right: 1px solid var(--border-subtle);
 }
 
 .stat-badge {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 8px 16px;
+  padding: 8px 14px;
   background: var(--bg-elevated);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
-  min-width: 70px;
+  min-width: 65px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.stat-badge:hover {
+  background: var(--bg-overlay);
+  border-color: var(--border-default);
+}
+
+.stat-badge.active {
+  border-color: var(--accent-primary);
+  background: var(--accent-glow);
+}
+
+.stat-icon {
+  margin-bottom: 2px;
 }
 
 .stat-value {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
   font-family: var(--font-mono);
 }
 
 .stat-label {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-muted);
   text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
+/* Stat badge colors */
+.stat-badge.blocked .stat-value,
+.stat-badge.blocked .stat-icon { color: var(--status-blocked); }
+.stat-badge.alerted .stat-value,
+.stat-badge.alerted .stat-icon { color: var(--status-warning); }
+.stat-badge.critical .stat-value { color: var(--status-blocked); }
 .stat-badge.high .stat-value { color: var(--status-critical); }
 .stat-badge.warning .stat-value { color: var(--status-warning); }
 .stat-badge.info .stat-value { color: var(--status-info); }
@@ -300,7 +366,7 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
 .alerts-content {
   flex: 1;
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: 340px 1fr;
   gap: 20px;
   min-height: 0;
 }
@@ -403,65 +469,18 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
   gap: 8px;
 }
 
-.filter-severity {
+.filter-group {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex: 1;
-}
-
-.filter-workload {
-  display: flex;
-  align-items: center;
-  position: relative;
-  flex: 1;
-}
-
-.workload-input {
-  width: 100%;
-  padding: 6px 28px 6px 10px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  font-size: 12px;
-  font-family: var(--font-mono);
-  color: var(--text-primary);
-  outline: none;
-  transition: border-color var(--transition-fast);
-}
-
-.workload-input::placeholder {
-  color: var(--text-muted);
-  font-family: var(--font-sans);
-}
-
-.workload-input:focus {
-  border-color: var(--border-focus);
-}
-
-.workload-clear {
-  position: absolute;
-  right: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-  transition: all var(--transition-fast);
-}
-
-.workload-clear:hover {
-  background: var(--bg-overlay);
-  color: var(--text-primary);
 }
 
 .filter-icon {
   color: var(--text-muted);
 }
 
-.severity-select {
+.filter-select {
   flex: 1;
   padding: 6px 10px;
   background: var(--bg-surface);
@@ -472,9 +491,52 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
   cursor: pointer;
 }
 
-.severity-select:focus {
+.filter-select:focus {
   border-color: var(--border-focus);
   outline: none;
+}
+
+.action-select {
+  min-width: 110px;
+}
+
+.filter-workload-active {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--accent-glow);
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-md);
+}
+
+.workload-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.workload-id {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--accent-primary);
+  background: transparent;
+}
+
+.workload-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  transition: all var(--transition-fast);
+}
+
+.workload-clear:hover {
+  background: var(--bg-overlay);
+  color: var(--text-primary);
 }
 
 /* Alert List */
@@ -504,12 +566,31 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
   text-align: center;
 }
 
+.empty-hint {
+  font-size: 12px;
+  color: var(--text-disabled);
+}
+
 /* Chain Panel */
 .chain-panel {
   min-height: 0;
 }
 
 /* Responsive */
+@media (max-width: 1100px) {
+  .header-stats {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .action-stats {
+    padding-right: 0;
+    border-right: none;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+}
+
 @media (max-width: 900px) {
   .alerts-content {
     grid-template-columns: 1fr;

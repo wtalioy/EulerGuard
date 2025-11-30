@@ -20,6 +20,7 @@ type ExecEvent struct {
 	CgroupID uint64
 	Comm     [TaskCommLen]byte
 	PComm    [TaskCommLen]byte
+	Blocked  uint8
 }
 
 type FileOpenEvent struct {
@@ -27,15 +28,17 @@ type FileOpenEvent struct {
 	CgroupID uint64
 	Flags    uint32
 	Filename [PathMaxLen]byte
+	Blocked  uint8
 }
 
 type ConnectEvent struct {
 	PID      uint32
 	CgroupID uint64
-	Family   uint16 // AF_INET or AF_INET6
-	Port     uint16 // destination port in host byte order
-	AddrV4   uint32 // IPv4 address for AF_INET
-	AddrV6   [16]byte // IPv6 address for AF_INET6
+	Family   uint16
+	Port     uint16
+	AddrV4   uint32
+	AddrV6   [16]byte
+	Blocked  uint8
 }
 
 type Event struct {

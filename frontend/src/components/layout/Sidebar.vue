@@ -26,7 +26,7 @@ const route = useRoute()
 const navItems: NavItem[] = [
   { icon: LayoutDashboard, label: 'Dashboard', route: '/', section: 'guard' },
   { icon: Radio, label: 'Live Stream', route: '/stream', section: 'guard' },
-  { icon: AlertTriangle, label: 'Alerts', route: '/alerts', section: 'guard' },
+  { icon: Shield, label: 'Security Events', route: '/alerts', section: 'guard' },
   { icon: FileCode, label: 'Rules', route: '/rules', section: 'guard' },
   { icon: Boxes, label: 'Workloads', route: '/workloads', section: 'guard' },
   { icon: Brain, label: 'Profiler', route: '/profiler', section: 'guard' },

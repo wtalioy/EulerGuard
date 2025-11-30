@@ -1,4 +1,7 @@
 rules:
+  # ============================================
+  # Execution Rules (exec)
+  # ============================================
   - name: Reverse Shell Pattern
     description: Bash spawned by network service may indicate reverse shell
     severity: warning
@@ -29,22 +32,41 @@ rules:
       parent_name_type: contains
     action: alert
     type: exec
-  - name: Access to sensitive files
-    description: Access to sensitive system files that should be monitored
-    severity: high
+
+  # ============================================
+  # File Access Rules (file)
+  # action: block - actively blocks file access
+  # action: alert - only monitors and alerts
+  # ============================================
+  - name: Block Access to Shadow File
+    description: Block unauthorized access to /etc/shadow
+    severity: critical
     match:
       filename: /etc/shadow
+    action: block
+    type: file
+  - name: Monitor Access to Passwd File
+    description: Monitor access to /etc/passwd
+    severity: warning
+    match:
+      filename: /etc/passwd
     action: alert
     type: file
-  - name: Suspicious Outbound Connection
-    description: Network connection to potentially suspicious port (e.g., reverse shell ports)
-    severity: high
+
+  # ============================================
+  # Network Connection Rules (connect)
+  # action: block - actively blocks connections
+  # action: alert - only monitors and alerts
+  # ============================================
+  - name: Block Reverse Shell Port
+    description: Block connections to port 4444 (common reverse shell port)
+    severity: critical
     match:
       dest_port: 4444
-    action: alert
+    action: block
     type: connect
-  - name: Connection to Common C2 Port
-    description: Connection to port 8080, commonly used for command and control
+  - name: Monitor C2 Port
+    description: Monitor connections to port 8080 (commonly used for C2)
     severity: warning
     match:
       dest_port: 8080

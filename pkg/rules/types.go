@@ -11,6 +11,12 @@ type ActionType string
 const (
 	ActionAllow ActionType = "allow"
 	ActionAlert ActionType = "alert"
+	ActionBlock ActionType = "block"
+)
+
+const (
+	BPFActionMonitor uint8 = 1
+	BPFActionBlock   uint8 = 2
 )
 
 const (

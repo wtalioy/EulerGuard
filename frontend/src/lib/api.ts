@@ -11,12 +11,14 @@ export interface SystemStats {
 export interface Alert {
     id: string
     timestamp: number
-    severity: string
+    severity: string // 'critical', 'high', 'warning', 'info'
     ruleName: string
     description: string
     pid: number
     processName: string
     cgroupId: string
+    action: string   // 'alert', 'block', 'allow'
+    blocked: boolean // Whether the action was blocked by LSM
 }
 
 export interface EventRates {

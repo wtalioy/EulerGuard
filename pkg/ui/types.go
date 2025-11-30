@@ -39,6 +39,8 @@ type FrontendAlert struct {
 	ProcessName string `json:"processName"`
 	ParentName  string `json:"parentName"`
 	CgroupID    string `json:"cgroupId"`
+	Action      string `json:"action"`  // "alert", "block", "allow"
+	Blocked     bool   `json:"blocked"` // true if action was blocked by LSM
 }
 
 type SystemStatsDTO struct {

@@ -216,6 +216,7 @@ func (a *App) GetWorkloads() []WorkloadDTO {
 			FileCount:    w.FileCount,
 			ConnectCount: w.ConnectCount,
 			AlertCount:   w.AlertCount,
+			BlockedCount: w.BlockedCount,
 			FirstSeen:    w.FirstSeen.UnixMilli(),
 			LastSeen:     w.LastSeen.UnixMilli(),
 		}
@@ -246,6 +247,7 @@ func (a *App) GetWorkload(id string) *WorkloadDTO {
 		FileCount:    w.FileCount,
 		ConnectCount: w.ConnectCount,
 		AlertCount:   w.AlertCount,
+		BlockedCount: w.BlockedCount,
 		FirstSeen:    w.FirstSeen.UnixMilli(),
 		LastSeen:     w.LastSeen.UnixMilli(),
 	}

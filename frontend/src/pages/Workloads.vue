@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { 
-  Boxes, RefreshCw, ArrowUpDown, Activity, FileText, Network, 
-  ChevronRight, Clock, Play, ShieldOff, AlertTriangle, ShieldCheck, Shield
+import {
+  Boxes, RefreshCw, ArrowUpDown, Activity, FileText, Network,
+  ChevronRight, Clock, Play, ShieldOff, AlertTriangle, ShieldCheck, Shield,
+  Ban, Eye, Radar
 } from 'lucide-vue-next'
 import Card from '../components/common/Card.vue'
 import { getWorkloads, type Workload } from '../lib/api'
@@ -33,7 +34,7 @@ const sortedWorkloads = computed(() => {
     if (typeof aVal === 'number' && typeof bVal === 'number') {
       return sortDesc.value ? bVal - aVal : aVal - bVal
     }
-    return sortDesc.value 
+    return sortDesc.value
       ? String(bVal).localeCompare(String(aVal))
       : String(aVal).localeCompare(String(bVal))
   })
@@ -92,13 +93,17 @@ const workloadColor = (id: string) => {
 
 // Security status for workload
 const getSecurityStatus = (w: Workload) => {
-  // In the future, this would check blocked count too
+  if (w.blockedCount > 0) return 'blocked'
   if (w.alertCount > 0) return 'alert'
   return 'ok'
 }
 
+const totalBlocked = computed(() => {
+  return workloads.value.reduce((sum, w) => sum + w.blockedCount, 0)
+})
+
 const totalEvents = computed(() => {
-  return workloads.value.reduce((sum, w) => 
+  return workloads.value.reduce((sum, w) =>
     sum + w.execCount + w.fileCount + w.connectCount, 0)
 })
 
@@ -156,13 +161,15 @@ onMounted(() => {
           <span class="stat-label">Total Events</span>
         </div>
       </div>
-      <div class="stat-card" :class="{ alert: totalAlerts > 0 }">
-        <div class="stat-icon-wrap" :class="totalAlerts > 0 ? 'alert' : 'safe'">
-          <component :is="totalAlerts > 0 ? AlertTriangle : ShieldCheck" :size="20" />
+      <div class="stat-card" :class="{ blocked: totalBlocked > 0, alert: totalBlocked === 0 && totalAlerts > 0 }">
+        <div class="stat-icon-wrap" :class="totalBlocked > 0 ? 'blocked' : (totalAlerts > 0 ? 'alert' : 'safe')">
+          <Ban v-if="totalBlocked > 0" :size="20" />
+          <AlertTriangle v-else-if="totalAlerts > 0" :size="20" />
+          <ShieldCheck v-else :size="20" />
         </div>
         <div class="stat-content">
-          <span class="stat-value">{{ totalAlerts }}</span>
-          <span class="stat-label">Security Events</span>
+          <span class="stat-value">{{ totalBlocked > 0 ? totalBlocked : totalAlerts }}</span>
+          <span class="stat-label">{{ totalBlocked > 0 ? 'Threats Blocked' : 'Security Events' }}</span>
         </div>
       </div>
     </div>
@@ -194,20 +201,12 @@ onMounted(() => {
           </thead>
           <tbody>
             <template v-for="w in sortedWorkloads" :key="w.id">
-              <tr 
-                class="workload-row" 
-                :class="[
-                  { expanded: expandedId === w.id },
-                  `status-${getSecurityStatus(w)}`
-                ]"
-                @click="toggleExpand(w.id)"
-              >
+              <tr class="workload-row" :class="[
+                { expanded: expandedId === w.id },
+                `status-${getSecurityStatus(w)}`
+              ]" @click="toggleExpand(w.id)">
                 <td class="col-expand">
-                  <ChevronRight 
-                    :size="16" 
-                    class="expand-icon" 
-                    :class="{ rotated: expandedId === w.id }" 
-                  />
+                  <ChevronRight :size="16" class="expand-icon" :class="{ rotated: expandedId === w.id }" />
                 </td>
                 <td class="col-workload">
                   <div class="workload-info">
@@ -235,20 +234,27 @@ onMounted(() => {
                   </div>
                 </td>
                 <td class="col-status">
-                  <div v-if="w.alertCount > 0" class="status-badge alert">
-                    <AlertTriangle :size="14" />
-                    <span>{{ w.alertCount }} Alert{{ w.alertCount > 1 ? 's' : '' }}</span>
-                  </div>
-                  <div v-else class="status-badge ok">
-                    <ShieldCheck :size="14" />
-                    <span>Secure</span>
+                  <div class="status-badges">
+                    <div v-if="w.blockedCount > 0" class="status-badge blocked">
+                      <Ban :size="14" />
+                      <span>{{ w.blockedCount }} Blocked</span>
+                    </div>
+                    <div v-if="w.alertCount - w.blockedCount > 0" class="status-badge alert">
+                      <AlertTriangle :size="14" />
+                      <span>{{ w.alertCount - w.blockedCount }} Alert{{ w.alertCount - w.blockedCount > 1 ? 's' : ''
+                        }}</span>
+                    </div>
+                    <div v-if="w.alertCount === 0" class="status-badge ok">
+                      <ShieldCheck :size="14" />
+                      <span>Secure</span>
+                    </div>
                   </div>
                 </td>
                 <td class="col-last">
                   <span class="last-seen">{{ formatRelativeTime(w.lastSeen) }}</span>
                 </td>
               </tr>
-              
+
               <!-- Expanded Details Row -->
               <tr v-if="expandedId === w.id" class="details-row">
                 <td colspan="5">
@@ -280,13 +286,23 @@ onMounted(() => {
                           </div>
                         </div>
                       </div>
-                      
+
                       <div class="detail-section">
                         <h4>Security & Timeline</h4>
                         <div class="security-timeline">
-                          <div class="security-status" :class="getSecurityStatus(w)">
-                            <component :is="w.alertCount > 0 ? AlertTriangle : ShieldCheck" :size="18" />
-                            <span class="security-label">{{ w.alertCount > 0 ? `${w.alertCount} Security Alert${w.alertCount > 1 ? 's' : ''}` : 'No Security Issues' }}</span>
+                          <div v-if="w.blockedCount > 0" class="security-status blocked">
+                            <Ban :size="18" />
+                            <span class="security-label">{{ w.blockedCount }} Threat{{ w.blockedCount > 1 ? 's' : '' }}
+                              Blocked</span>
+                          </div>
+                          <div v-if="w.alertCount - w.blockedCount > 0" class="security-status alert">
+                            <AlertTriangle :size="18" />
+                            <span class="security-label">{{ w.alertCount - w.blockedCount }} Alert{{ w.alertCount -
+                              w.blockedCount > 1 ? 's' : '' }}</span>
+                          </div>
+                          <div v-if="w.alertCount === 0" class="security-status ok">
+                            <ShieldCheck :size="18" />
+                            <span class="security-label">No Security Issues</span>
                           </div>
                           <div class="timeline-info">
                             <div class="timeline-item">
@@ -303,19 +319,11 @@ onMounted(() => {
                         </div>
                       </div>
                     </div>
-                    
+
                     <div class="details-actions">
-                      <button class="action-btn primary" @click.stop="navigateToStream(w.id)">
-                        <Activity :size="14" />
-                        View Events
-                      </button>
-                      <button 
-                        v-if="w.alertCount > 0" 
-                        class="action-btn alert" 
-                        @click.stop="navigateToAlerts(w.id)"
-                      >
-                        <AlertTriangle :size="14" />
-                        View Alerts
+                      <button v-if="w.alertCount > 0" class="action-btn secondary" @click.stop="navigateToAlerts(w.id)">
+                        <Radar :size="14" />
+                        Security Events
                       </button>
                     </div>
                   </div>
@@ -403,8 +411,13 @@ onMounted(() => {
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Stats Row */
@@ -425,8 +438,13 @@ onMounted(() => {
 }
 
 .stat-card.alert {
-  border-color: var(--status-warning);
-  background: linear-gradient(135deg, var(--status-warning-dim), var(--bg-surface) 60%);
+  border-color: rgba(251, 191, 36, 0.4);
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.05), var(--bg-surface) 50%);
+}
+
+.stat-card.blocked {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.06), var(--bg-surface) 50%);
 }
 
 .stat-icon-wrap {
@@ -454,8 +472,13 @@ onMounted(() => {
 }
 
 .stat-icon-wrap.alert {
-  background: var(--status-warning-dim);
-  color: var(--status-warning);
+  background: rgba(251, 191, 36, 0.1);
+  color: rgba(251, 191, 36, 0.9);
+}
+
+.stat-icon-wrap.blocked {
+  background: rgba(239, 68, 68, 0.1);
+  color: rgba(239, 68, 68, 0.9);
 }
 
 .stat-content {
@@ -534,7 +557,11 @@ onMounted(() => {
 }
 
 .workload-row.status-alert {
-  border-left: 3px solid var(--status-warning);
+  border-left: 3px solid rgba(251, 191, 36, 0.6);
+}
+
+.workload-row.status-blocked {
+  border-left: 3px solid rgba(239, 68, 68, 0.7);
 }
 
 .workloads-table td {
@@ -609,12 +636,18 @@ onMounted(() => {
 }
 
 /* Status Badge */
+.status-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .status-badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   font-size: 12px;
   font-weight: 500;
 }
@@ -625,17 +658,28 @@ onMounted(() => {
 }
 
 .status-badge.alert {
-  background: var(--status-warning-dim);
-  color: var(--status-warning);
+  background: rgba(251, 191, 36, 0.08);
+  color: rgba(251, 191, 36, 0.9);
+  border: 1px solid rgba(251, 191, 36, 0.2);
 }
 
-.status-badge.alert svg {
-  animation: pulse 2s ease-in-out infinite;
+.status-badge.blocked {
+  background: rgba(239, 68, 68, 0.08);
+  color: rgba(239, 68, 68, 0.9);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  font-weight: 600;
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .last-seen {
@@ -690,9 +734,17 @@ onMounted(() => {
   color: var(--text-muted);
 }
 
-.stat-icon.exec { color: var(--chart-exec); }
-.stat-icon.file { color: var(--chart-file); }
-.stat-icon.net { color: var(--chart-network); }
+.stat-icon.exec {
+  color: var(--chart-exec);
+}
+
+.stat-icon.file {
+  color: var(--chart-file);
+}
+
+.stat-icon.net {
+  color: var(--chart-network);
+}
 
 .stat-info {
   display: flex;
@@ -732,8 +784,17 @@ onMounted(() => {
 }
 
 .security-status.alert {
-  background: var(--status-warning-dim);
-  color: var(--status-warning);
+  background: rgba(251, 191, 36, 0.06);
+  color: rgba(251, 191, 36, 0.85);
+  border: 1px solid rgba(251, 191, 36, 0.15);
+  backdrop-filter: blur(4px);
+}
+
+.security-status.blocked {
+  background: rgba(239, 68, 68, 0.06);
+  color: rgba(239, 68, 68, 0.85);
+  border: 1px solid rgba(239, 68, 68, 0.18);
+  backdrop-filter: blur(4px);
 }
 
 .security-label {
@@ -785,25 +846,28 @@ onMounted(() => {
   transition: all var(--transition-fast);
 }
 
-.action-btn.primary {
-  background: var(--accent-primary);
-  color: #fff;
+.action-btn.secondary {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
 }
 
-.action-btn.primary:hover {
-  background: var(--accent-hover);
+.action-btn.secondary:hover {
+  background: var(--bg-overlay);
+  color: var(--text-primary);
+  border-color: var(--accent-primary);
   transform: translateY(-1px);
 }
 
-.action-btn.alert {
-  background: var(--status-warning-dim);
-  color: var(--status-warning);
-  border-color: var(--status-warning);
+.action-btn.security {
+  background: var(--accent-primary);
+  color: #fff;
+  border: 1px solid var(--accent-primary);
 }
 
-.action-btn.alert:hover {
-  background: var(--status-warning);
-  color: #fff;
+.action-btn.security:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
   transform: translateY(-1px);
 }
 

@@ -18,6 +18,7 @@ type Metadata struct {
 	FileCount    int64
 	ConnectCount int64
 	AlertCount   int64
+	BlockedCount int64
 }
 
 type Registry struct {
@@ -74,13 +75,16 @@ func (r *Registry) RecordConnect(cgroupID uint64, cgroupPath string) {
 	r.touch(id)
 }
 
-func (r *Registry) RecordAlert(cgroupID uint64) {
+func (r *Registry) RecordAlert(cgroupID uint64, blocked bool) {
 	id := WorkloadID(cgroupID)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if m, ok := r.data[id]; ok {
 		m.AlertCount++
+		if blocked {
+			m.BlockedCount++
+		}
 		m.LastSeen = time.Now()
 		r.touch(id)
 	}

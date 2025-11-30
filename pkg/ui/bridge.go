@@ -210,7 +210,7 @@ func (b *Bridge) emitAlert(alert FrontendAlert) {
 	b.stats.AddAlert(alert)
 	if b.workloadRegistry != nil {
 		if cgroupID, err := strconv.ParseUint(alert.CgroupID, 10, 64); err == nil {
-			b.workloadRegistry.RecordAlert(cgroupID)
+			b.workloadRegistry.RecordAlert(cgroupID, alert.Blocked)
 		}
 	}
 }

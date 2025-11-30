@@ -97,6 +97,7 @@ type WorkloadDTO struct {
 	FileCount    int64  `json:"fileCount"`
 	ConnectCount int64  `json:"connectCount"`
 	AlertCount   int64  `json:"alertCount"`
+	BlockedCount int64  `json:"blockedCount"`
 	FirstSeen    int64  `json:"firstSeen"`
 	LastSeen     int64  `json:"lastSeen"`
 }

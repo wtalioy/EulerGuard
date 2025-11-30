@@ -110,6 +110,7 @@ export interface Workload {
     fileCount: number
     connectCount: number
     alertCount: number
+    blockedCount: number
     firstSeen: number
     lastSeen: number
 }

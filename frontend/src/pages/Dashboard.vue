@@ -72,31 +72,6 @@ onMounted(() => {
 
 <template>
   <div class="dashboard">
-    <!-- Header -->
-    <div class="dashboard-header">
-      <div class="header-left">
-        <div class="brand">
-          <div class="brand-icon">
-            <Shield :size="28" />
-          </div>
-          <div class="brand-text">
-            <h1 class="brand-name">EulerGuard</h1>
-            <span class="brand-tagline">eBPF Security Platform</span>
-          </div>
-        </div>
-      </div>
-      <div class="header-right">
-        <div class="status-badge active">
-          <Zap :size="14" />
-          <span>LSM Hooks Active</span>
-        </div>
-        <div class="status-badge" :class="stats.probeStatus">
-          <span class="status-dot"></span>
-          <span>{{ stats.probeStatus === 'running' ? 'Monitoring' : 'Starting' }}</span>
-        </div>
-      </div>
-    </div>
-
     <!-- Main Grid -->
     <div class="main-grid">
       <!-- Left Column: Defense Overview -->
@@ -310,104 +285,6 @@ onMounted(() => {
   flex-direction: column;
   gap: 20px;
   max-width: 1400px;
-}
-
-/* Header */
-.dashboard-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.brand-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  background: linear-gradient(135deg, var(--accent-primary), #3b82f6);
-  border-radius: var(--radius-md);
-  color: #fff;
-}
-
-.brand-name {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0;
-  letter-spacing: -0.5px;
-}
-
-.brand-tagline {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.status-badge {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-full);
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.status-badge.active {
-  background: var(--status-safe-dim);
-  border-color: var(--status-safe);
-  color: var(--status-safe);
-}
-
-.status-badge.running {
-  border-color: var(--status-safe);
-}
-
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-muted);
-}
-
-.status-badge.running .status-dot {
-  background: var(--status-safe);
-  box-shadow: 0 0 8px var(--status-safe);
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.5;
-  }
 }
 
 /* Main Grid */

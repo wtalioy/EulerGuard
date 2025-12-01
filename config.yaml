@@ -7,7 +7,7 @@ bpf_path: ./bpf/main.bpf.o
 rules_path: ./rules.yaml
 
 # Path to log file
-log_file: ./eulerguard.log
+log_file: ./runtime.log
 
 # Output events as JSON lines (default: false)
 json_output: false
@@ -34,7 +34,7 @@ process_tree_max_chain_length: 50
 log_buffer_size: 65536
 
 # ============================================
-# Learning Mode Configuration
+# Learning Mode Configuration (CLI specific)
 # ============================================
 
 # Enable learning mode to auto-generate whitelist rules (default: false)
@@ -47,3 +47,33 @@ learn_duration: 5m
 
 # Output path for generated whitelist rules (default: whitelist_rules.yaml)
 learn_output_path: ./whitelist_rules.yaml
+
+# ============================================
+# AI Intelligent Diagnosis Configuration (Web UI specific)
+# ============================================
+ai:
+  # Enable AI diagnosis feature (default: true)
+  enabled: true
+  
+  # Provider mode: "ollama" (local, recommended) or "openai" (API)
+  mode: "ollama"
+  
+  # Ollama configuration (when mode: "ollama")
+  ollama:
+    # Ollama server endpoint (default assumes local Ollama installation)
+    endpoint: "http://localhost:11434"
+    # Model to use - qwen2.5-coder is good for technical analysis
+    model: "qwen2.5-coder:1.5b"
+    # Request timeout in seconds
+    timeout: 60
+  
+  # OpenAI-compatible API configuration (when mode: "openai")
+  openai:
+    # API endpoint (DeepSeek, OpenAI, or any compatible service)
+    endpoint: "https://api.deepseek.com"
+    # API key (can also use EULERGUARD_AI_API_KEY env var)
+    api_key: ""
+    # Model name
+    model: "deepseek-chat"
+    # Request timeout in seconds
+    timeout: 30

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"eulerguard/pkg/ai"
 	"eulerguard/pkg/config"
 	"eulerguard/pkg/events"
 	"eulerguard/pkg/proc"
@@ -35,6 +36,8 @@ type App struct {
 		duration  time.Duration
 	}
 
+	aiService *ai.Service
+
 	ready       chan struct{}
 	stopWatcher chan struct{}
 	watcherMu   sync.Mutex
@@ -43,10 +46,21 @@ type App struct {
 
 func NewApp(opts config.Options) *App {
 	stats := NewStats()
+
+	var aiService *ai.Service
+	if opts.AI.Enabled {
+		var err error
+		aiService, err = ai.NewService(opts.AI)
+		if err != nil {
+			log.Printf("[AI] Failed to initialize: %v", err)
+		}
+	}
+
 	return &App{
 		opts:        opts,
 		stats:       stats,
 		bridge:      NewBridge(stats),
+		aiService:   aiService,
 		ready:       make(chan struct{}),
 		stopWatcher: make(chan struct{}),
 	}
@@ -66,8 +80,48 @@ func (a *App) Shutdown(ctx context.Context) {
 	close(a.stopWatcher)
 }
 
-func (a *App) Bridge() *Bridge { return a.bridge }
-func (a *App) Stats() *Stats   { return a.stats }
+func (a *App) Bridge() *Bridge        { return a.bridge }
+func (a *App) Stats() *Stats          { return a.stats }
+func (a *App) AIService() *ai.Service { return a.aiService }
+
+func (a *App) Diagnose(ctx context.Context, query string) (*ai.DiagnosisResult, error) {
+	if a.aiService == nil || !a.aiService.IsEnabled() {
+		return nil, nil
+	}
+
+	procTreeSize := 0
+	if a.processTree != nil {
+		procTreeSize = a.processTree.Size()
+	}
+
+	return a.aiService.Diagnose(ctx, a.stats, a.workloadRegistry, procTreeSize, query)
+}
+
+func (a *App) Chat(ctx context.Context, sessionID, message string) (*ai.ChatResponse, error) {
+	if a.aiService == nil || !a.aiService.IsEnabled() {
+		return nil, nil
+	}
+
+	procTreeSize := 0
+	if a.processTree != nil {
+		procTreeSize = a.processTree.Size()
+	}
+
+	return a.aiService.Chat(ctx, sessionID, message, a.stats, a.workloadRegistry, procTreeSize)
+}
+
+func (a *App) GetChatHistory(sessionID string) []ai.Message {
+	if a.aiService == nil {
+		return nil
+	}
+	return a.aiService.GetChatHistory(sessionID)
+}
+
+func (a *App) ClearChat(sessionID string) {
+	if a.aiService != nil {
+		a.aiService.ClearChat(sessionID)
+	}
+}
 
 func (a *App) Run() error {
 	log.Println("Starting eBPF tracer...")

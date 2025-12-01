@@ -260,3 +260,131 @@ export function subscribeToRulesReload(callback: () => void): UnsubscribeFn {
 
     return () => eventSource.close()
 }
+
+// ============================================
+// AI Types
+// ============================================
+
+export interface AIStatus {
+    enabled: boolean
+    provider: string
+    isLocal: boolean
+    status: 'ready' | 'unavailable' | 'disabled'
+}
+
+export interface DiagnosisResult {
+    analysis: string
+    snapshotSummary: string
+    provider: string
+    isLocal: boolean
+    durationMs: number
+    timestamp: number
+}
+
+export interface ChatMessage {
+    role: 'user' | 'assistant' | 'system'
+    content: string
+    timestamp: number
+}
+
+export interface ChatResponse {
+    message: string
+    sessionId: string
+    contextSummary: string
+    provider: string
+    isLocal: boolean
+    durationMs: number
+    timestamp: number
+    messageCount: number
+}
+
+export interface AIError {
+    error: string
+}
+
+// ============================================
+// AI API Functions
+// ============================================
+
+export async function getAIStatus(): Promise<AIStatus> {
+    const resp = await fetch('/api/ai/status')
+    if (!resp.ok) {
+        try {
+            const error: AIError = await resp.json()
+            throw new Error(error.error || 'Failed to fetch AI status')
+        } catch (err) {
+            const text = await resp.text()
+            throw new Error(text || 'Failed to fetch AI status')
+        }
+    }
+    return resp.json()
+}
+
+export async function diagnoseSystem(query?: string): Promise<DiagnosisResult> {
+    const resp = await fetch('/api/ai/diagnose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: query || '' })
+    })
+
+    if (!resp.ok) {
+        try {
+            const error: AIError = await resp.json()
+            throw new Error(error.error || 'Diagnosis failed')
+        } catch (err) {
+            const text = await resp.text()
+            throw new Error(text || 'Diagnosis failed')
+        }
+    }
+
+    return resp.json()
+}
+
+export async function sendChatMessage(
+    message: string,
+    sessionId?: string
+): Promise<ChatResponse> {
+    const resp = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, sessionId: sessionId || '' })
+    })
+
+    if (!resp.ok) {
+        const error: AIError = await resp.json()
+        throw new Error(error.error || 'Chat failed')
+    }
+
+    return resp.json()
+}
+
+export async function getChatHistory(sessionId: string): Promise<ChatMessage[]> {
+    const resp = await fetch(`/api/ai/chat/history?sessionId=${encodeURIComponent(sessionId)}`)
+    if (!resp.ok) {
+        try {
+            const error: AIError = await resp.json()
+            throw new Error(error.error || 'Failed to load chat history')
+        } catch (err) {
+            const text = await resp.text()
+            throw new Error(text || 'Failed to load chat history')
+        }
+    }
+    return resp.json()
+}
+
+export async function clearChatHistory(sessionId: string): Promise<void> {
+    const resp = await fetch('/api/ai/chat/clear', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId })
+    })
+    if (!resp.ok) {
+        try {
+            const error: AIError = await resp.json()
+            throw new Error(error.error || 'Failed to clear chat history')
+        } catch (err) {
+            const text = await resp.text()
+            throw new Error(text || 'Failed to clear chat history')
+        }
+    }
+}

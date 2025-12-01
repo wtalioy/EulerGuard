@@ -9,14 +9,15 @@ import {
   Boxes,
   Brain,
   Cpu,
-  Shield
+  Shield,
+  MessageSquare
 } from 'lucide-vue-next'
 
 interface NavItem {
   icon: any
   label: string
   route: string
-  section: 'guard' | 'learn'
+  section: 'guard' | 'insights'
   badge?: number
   badgeType?: 'default' | 'critical'
 }
@@ -30,11 +31,13 @@ const navItems: NavItem[] = [
   { icon: FileCode, label: 'Security Rules', route: '/rules', section: 'guard' },
   { icon: Boxes, label: 'Workloads', route: '/workloads', section: 'guard' },
   { icon: Brain, label: 'Behavior Profiler', route: '/profiler', section: 'guard' },
-  { icon: Cpu, label: 'Kernel X-Ray', route: '/kernel', section: 'learn' },
+  // INSIGHTS section
+  { icon: MessageSquare, label: 'AI Chat', route: '/ai', section: 'insights' },
+  { icon: Cpu, label: 'Kernel X-Ray', route: '/kernel', section: 'insights' },
 ]
 
 const guardItems = computed(() => navItems.filter(item => item.section === 'guard'))
-const learnItems = computed(() => navItems.filter(item => item.section === 'learn'))
+const insightsItems = computed(() => navItems.filter(item => item.section === 'insights'))
 
 const isActive = (path: string) => route.path === path
 </script>
@@ -69,9 +72,9 @@ const isActive = (path: string) => route.path === path
       </div>
 
       <div class="nav-section">
-        <span class="nav-section-label">LEARN</span>
+        <span class="nav-section-label">INSIGHTS</span>
         <router-link
-          v-for="item in learnItems"
+          v-for="item in insightsItems"
           :key="item.route"
           :to="item.route"
           class="nav-item"

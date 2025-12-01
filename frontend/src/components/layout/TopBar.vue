@@ -1,14 +1,28 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { Brain, Cloud, Sparkles } from 'lucide-vue-next'
+import { getAIStatus, type AIStatus } from '../../lib/api'
+import DiagnosisModal from '../ai/DiagnosisModal.vue'
 
 const probeStatus = ref<'active' | 'error' | 'starting'>('starting')
 
-onMounted(() => {
+// AI state
+const aiStatus = ref<AIStatus | null>(null)
+const showDiagnosisModal = ref(false)
+
+onMounted(async () => {
   setTimeout(() => {
     if (probeStatus.value === 'starting') {
       probeStatus.value = 'active'
     }
   }, 2000)
+  
+  // Fetch AI status
+  try {
+    aiStatus.value = await getAIStatus()
+  } catch (e) {
+    console.error('Failed to fetch AI status:', e)
+  }
 })
 </script>
 
@@ -29,9 +43,37 @@ onMounted(() => {
     </div>
 
     <div class="topbar-right">
-      <!-- Placeholder for future actions -->
+      <!-- AI Status & Quick Diagnose -->
+      <div v-if="aiStatus?.enabled" class="ai-section">
+        <!-- AI Provider Status Badge -->
+        <div class="ai-status" :class="aiStatus.status">
+          <component 
+            :is="aiStatus.isLocal ? Brain : Cloud" 
+            :size="14" 
+            class="ai-icon"
+          />
+          <span class="ai-label">{{ aiStatus.isLocal ? 'Local AI' : 'Cloud AI' }}</span>
+        </div>
+        
+        <!-- Quick Diagnose Button -->
+        <button 
+          class="diagnose-btn" 
+          @click="showDiagnosisModal = true"
+          :disabled="aiStatus.status !== 'ready'"
+          title="Quick one-click system diagnosis"
+        >
+          <Sparkles :size="16" />
+          <span>Quick Diagnose</span>
+        </button>
+      </div>
     </div>
   </header>
+  
+  <!-- Quick Diagnosis Modal -->
+  <DiagnosisModal 
+    :visible="showDiagnosisModal" 
+    @close="showDiagnosisModal = false"
+  />
 </template>
 
 <style scoped>
@@ -111,6 +153,68 @@ onMounted(() => {
   color: var(--status-safe);
 }
 
+/* AI Section Styles */
+.ai-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ai-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+}
+
+.ai-status.ready .ai-icon {
+  color: var(--status-safe);
+}
+
+.ai-status.unavailable .ai-icon {
+  color: var(--status-warning);
+}
+
+.ai-label {
+  color: var(--text-secondary);
+}
+
+.diagnose-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, var(--accent-primary), #a855f7);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: white;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.diagnose-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
+}
+
+.diagnose-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.diagnose-btn svg {
+  animation: sparkle 2s ease-in-out infinite;
+}
+
+@keyframes sparkle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
 
 @keyframes pulse-ring {
   0% {

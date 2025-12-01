@@ -1,50 +1,15 @@
 package ui
 
-type FrontendExecEvent struct {
-	Type       string `json:"type"`
-	Timestamp  int64  `json:"timestamp"`
-	PID        uint32 `json:"pid"`
-	PPID       uint32 `json:"ppid"`
-	CgroupID   string `json:"cgroupId"`
-	Comm       string `json:"comm"`
-	ParentComm string `json:"parentComm"`
-	Blocked    bool   `json:"blocked"`
-}
+import "eulerguard/pkg/types"
 
-type FrontendConnectEvent struct {
-	Type      string `json:"type"`
-	Timestamp int64  `json:"timestamp"`
-	PID       uint32 `json:"pid"`
-	CgroupID  string `json:"cgroupId"`
-	Family    uint16 `json:"family"`
-	Port      uint16 `json:"port"`
-	Addr      string `json:"addr"`
-	Blocked   bool   `json:"blocked"`
-}
-
-type FrontendFileEvent struct {
-	Type      string `json:"type"`
-	Timestamp int64  `json:"timestamp"`
-	PID       uint32 `json:"pid"`
-	CgroupID  string `json:"cgroupId"`
-	Flags     uint32 `json:"flags"`
-	Filename  string `json:"filename"`
-	Blocked   bool   `json:"blocked"`
-}
-
-type FrontendAlert struct {
-	ID          string `json:"id"`
-	Timestamp   int64  `json:"timestamp"`
-	Severity    string `json:"severity"`
-	RuleName    string `json:"ruleName"`
-	Description string `json:"description"`
-	PID         uint32 `json:"pid"`
-	ProcessName string `json:"processName"`
-	ParentName  string `json:"parentName"`
-	CgroupID    string `json:"cgroupId"`
-	Action      string `json:"action"`  // "alert", "block", "allow"
-	Blocked     bool   `json:"blocked"` // true if action was blocked by LSM
-}
+type (
+	FrontendExecEvent    = types.ExecEvent
+	FrontendConnectEvent = types.ConnectEvent
+	FrontendFileEvent    = types.FileEvent
+	FrontendAlert        = types.Alert
+	ProcessInfoDTO       = types.ProcessInfo
+	WorkloadDTO          = types.Workload
+)
 
 type SystemStatsDTO struct {
 	ProcessCount  int     `json:"processCount"`
@@ -52,14 +17,6 @@ type SystemStatsDTO struct {
 	EventsPerSec  float64 `json:"eventsPerSec"`
 	AlertCount    int     `json:"alertCount"`
 	ProbeStatus   string  `json:"probeStatus"` // "active", "error", "starting"
-}
-
-type ProcessInfoDTO struct {
-	PID       uint32 `json:"pid"`
-	PPID      uint32 `json:"ppid"`
-	Comm      string `json:"comm"`
-	CgroupID  string `json:"cgroupId"`
-	Timestamp int64  `json:"timestamp"`
 }
 
 type RuleDTO struct {
@@ -91,16 +48,4 @@ type ProbeStatsDTO struct {
 	Active     bool   `json:"active"`
 	EventsRate int64  `json:"eventsRate"`
 	TotalCount int64  `json:"totalCount"`
-}
-
-type WorkloadDTO struct {
-	ID           string `json:"id"`
-	CgroupPath   string `json:"cgroupPath"`
-	ExecCount    int64  `json:"execCount"`
-	FileCount    int64  `json:"fileCount"`
-	ConnectCount int64  `json:"connectCount"`
-	AlertCount   int64  `json:"alertCount"`
-	BlockedCount int64  `json:"blockedCount"`
-	FirstSeen    int64  `json:"firstSeen"`
-	LastSeen     int64  `json:"lastSeen"`
 }

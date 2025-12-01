@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"eulerguard/pkg/ai"
 	"eulerguard/pkg/config"
 )
 
@@ -50,7 +51,7 @@ func RunWebServer(opts config.Options, port int, assets embed.FS) error {
 	}()
 
 	log.Printf("========================================")
-	log.Printf("  EulerGuard Web UI: http://localhost:%d", port)
+	log.Printf("EulerGuard Web UI: http://localhost:%d", port)
 	log.Printf("========================================")
 
 	return server.ListenAndServe()
@@ -120,12 +121,10 @@ func registerAPI(mux *http.ServeMux, app *App) {
 		}
 	})
 
-	// Get process ancestors for attack chain visualization
 	mux.HandleFunc("/api/ancestors/", func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
 		w.Header().Set("Content-Type", "application/json")
 
-		// Extract PID from URL path
 		pidStr := strings.TrimPrefix(r.URL.Path, "/api/ancestors/")
 		pid, err := strconv.ParseUint(pidStr, 10, 32)
 		if err != nil {
@@ -143,7 +142,6 @@ func registerAPI(mux *http.ServeMux, app *App) {
 		w.Write(data)
 	})
 
-	// Get all detection rules
 	mux.HandleFunc("/api/rules", func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
 		w.Header().Set("Content-Type", "application/json")
@@ -153,12 +151,10 @@ func registerAPI(mux *http.ServeMux, app *App) {
 		w.Write(data)
 	})
 
-	// Get all workloads
 	mux.HandleFunc("/api/workloads", func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
 		w.Header().Set("Content-Type", "application/json")
 
-		// Check if this is a single workload request
 		if strings.HasPrefix(r.URL.Path, "/api/workloads/") {
 			idStr := strings.TrimPrefix(r.URL.Path, "/api/workloads/")
 			workload := app.GetWorkload(idStr)
@@ -176,7 +172,6 @@ func registerAPI(mux *http.ServeMux, app *App) {
 		w.Write(data)
 	})
 
-	// Get single workload by ID
 	mux.HandleFunc("/api/workloads/", func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
 		w.Header().Set("Content-Type", "application/json")
@@ -191,7 +186,6 @@ func registerAPI(mux *http.ServeMux, app *App) {
 		w.Write(data)
 	})
 
-	// Get probe stats for Kernel X-Ray
 	mux.HandleFunc("/api/probes/stats", func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
 		w.Header().Set("Content-Type", "application/json")
@@ -201,7 +195,6 @@ func registerAPI(mux *http.ServeMux, app *App) {
 		w.Write(data)
 	})
 
-	// Learning mode status
 	mux.HandleFunc("/api/learning/status", func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
 		w.Header().Set("Content-Type", "application/json")
@@ -211,7 +204,6 @@ func registerAPI(mux *http.ServeMux, app *App) {
 		w.Write(data)
 	})
 
-	// Start learning mode
 	mux.HandleFunc("/api/learning/start", func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
 		if r.Method == "OPTIONS" {
@@ -240,11 +232,11 @@ func registerAPI(mux *http.ServeMux, app *App) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	// Stop learning mode
 	mux.HandleFunc("/api/learning/stop", func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
 		if r.Method == "OPTIONS" {
 			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 			return
 		}
 		if r.Method != "POST" {
@@ -263,7 +255,6 @@ func registerAPI(mux *http.ServeMux, app *App) {
 		w.Write(data)
 	})
 
-	// Apply whitelist rules
 	mux.HandleFunc("/api/learning/apply", func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
 		if r.Method == "OPTIONS" {
@@ -292,7 +283,6 @@ func registerAPI(mux *http.ServeMux, app *App) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	// SSE stream for all events (LiveStream page)
 	mux.HandleFunc("/api/stream", func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -305,7 +295,6 @@ func registerAPI(mux *http.ServeMux, app *App) {
 			return
 		}
 
-		// Subscribe to events from the bridge
 		events := make(chan any, 100)
 		app.Stats().SubscribeEvents(events)
 		defer app.Stats().UnsubscribeEvents(events)
@@ -330,6 +319,171 @@ func registerAPI(mux *http.ServeMux, app *App) {
 			}
 		}
 	})
+
+
+	mux.HandleFunc("/api/ai/status", func(w http.ResponseWriter, r *http.Request) {
+		setCORS(w)
+		w.Header().Set("Content-Type", "application/json")
+
+		var status ai.StatusDTO
+		if app.AIService() != nil {
+			status = app.AIService().GetStatus()
+		} else {
+			status = ai.StatusDTO{Enabled: false, Status: "disabled"}
+		}
+
+		json.NewEncoder(w).Encode(status)
+	})
+
+	mux.HandleFunc("/api/ai/diagnose", func(w http.ResponseWriter, r *http.Request) {
+		setCORS(w)
+
+		if r.Method == "OPTIONS" {
+			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			return
+		}
+
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req struct {
+			Query string `json:"query"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		defer cancel()
+
+		result, err := app.Diagnose(ctx, req.Query)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+
+		if result == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{"error": "AI service not available"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(result)
+	})
+
+	mux.HandleFunc("/api/ai/chat", func(w http.ResponseWriter, r *http.Request) {
+		setCORS(w)
+
+		if r.Method == "OPTIONS" {
+			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			return
+		}
+
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req struct {
+			Message   string `json:"message"`
+			SessionID string `json:"sessionId"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if req.Message == "" {
+			http.Error(w, "Message is required", http.StatusBadRequest)
+			return
+		}
+
+		if req.SessionID == "" {
+			req.SessionID = generateSessionID()
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		defer cancel()
+
+		result, err := app.Chat(ctx, req.SessionID, req.Message)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+
+		if result == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{"error": "AI service not available"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(result)
+	})
+
+	mux.HandleFunc("/api/ai/chat/history", func(w http.ResponseWriter, r *http.Request) {
+		setCORS(w)
+		w.Header().Set("Content-Type", "application/json")
+
+		sessionID := r.URL.Query().Get("sessionId")
+		if sessionID == "" {
+			json.NewEncoder(w).Encode([]ai.Message{})
+			return
+		}
+
+		history := app.GetChatHistory(sessionID)
+		if history == nil {
+			history = []ai.Message{}
+		}
+
+		json.NewEncoder(w).Encode(history)
+	})
+
+	mux.HandleFunc("/api/ai/chat/clear", func(w http.ResponseWriter, r *http.Request) {
+		setCORS(w)
+
+		if r.Method == "OPTIONS" {
+			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			return
+		}
+
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req struct {
+			SessionID string `json:"sessionId"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if req.SessionID != "" {
+			app.ClearChat(req.SessionID)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	})
+}
+
+func generateSessionID() string {
+	return fmt.Sprintf("session-%d", time.Now().UnixNano())
 }
 
 func setCORS(w http.ResponseWriter) {

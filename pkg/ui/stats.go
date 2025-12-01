@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"eulerguard/pkg/events"
+	"eulerguard/pkg/types"
 	"eulerguard/pkg/utils"
 )
 
@@ -24,10 +25,16 @@ type Stats struct {
 	rateFile       atomic.Int64
 	rateConnect    atomic.Int64
 
-	alerts      []FrontendAlert
+	alerts      []types.Alert
 	alertsMu    sync.RWMutex
 	maxAlerts   int
 	totalAlerts atomic.Int64
+
+	recentExecs    []types.ExecEvent
+	recentFiles    []types.FileEvent
+	recentConnects []types.ConnectEvent
+	recentMu       sync.RWMutex
+	maxRecent      int
 
 	workloadCountFn WorkloadCountFunc
 
@@ -42,9 +49,13 @@ type sseEvent struct {
 
 func NewStats() *Stats {
 	s := &Stats{
-		alerts:    make([]FrontendAlert, 0, 100),
-		maxAlerts: 100,
-		eventSubs: make(map[chan any]struct{}),
+		alerts:         make([]types.Alert, 0, 100),
+		maxAlerts:      100,
+		recentExecs:    make([]types.ExecEvent, 0, 50),
+		recentFiles:    make([]types.FileEvent, 0, 50),
+		recentConnects: make([]types.ConnectEvent, 0, 50),
+		maxRecent:      50,
+		eventSubs:      make(map[chan any]struct{}),
 	}
 	go s.rateLoop()
 	return s
@@ -72,12 +83,45 @@ func (s *Stats) rateLoop() {
 func (s *Stats) RecordExec(ev events.ExecEvent) {
 	s.execCount.Add(1)
 	s.lastSecExec.Add(1)
+
+	frontendEv := ExecToFrontend(ev)
+	s.recentMu.Lock()
+	if len(s.recentExecs) >= s.maxRecent {
+		s.recentExecs = s.recentExecs[1:]
+	}
+	s.recentExecs = append(s.recentExecs, frontendEv)
+	s.recentMu.Unlock()
 }
 
-func (s *Stats) RecordFile()    { s.fileCount.Add(1); s.lastSecFile.Add(1) }
+func (s *Stats) RecordFile() { s.fileCount.Add(1); s.lastSecFile.Add(1) }
+
+func (s *Stats) RecordFileEvent(ev types.FileEvent) {
+	s.fileCount.Add(1)
+	s.lastSecFile.Add(1)
+
+	s.recentMu.Lock()
+	if len(s.recentFiles) >= s.maxRecent {
+		s.recentFiles = s.recentFiles[1:]
+	}
+	s.recentFiles = append(s.recentFiles, ev)
+	s.recentMu.Unlock()
+}
+
 func (s *Stats) RecordConnect() { s.connectCount.Add(1); s.lastSecConnect.Add(1) }
 
-func (s *Stats) AddAlert(alert FrontendAlert) {
+func (s *Stats) RecordConnectEvent(ev types.ConnectEvent) {
+	s.connectCount.Add(1)
+	s.lastSecConnect.Add(1)
+
+	s.recentMu.Lock()
+	if len(s.recentConnects) >= s.maxRecent {
+		s.recentConnects = s.recentConnects[1:]
+	}
+	s.recentConnects = append(s.recentConnects, ev)
+	s.recentMu.Unlock()
+}
+
+func (s *Stats) AddAlert(alert types.Alert) {
 	s.totalAlerts.Add(1)
 	s.alertsMu.Lock()
 	if len(s.alerts) >= s.maxAlerts {
@@ -105,10 +149,10 @@ func (s *Stats) TotalAlertCount() int64 {
 	return s.totalAlerts.Load()
 }
 
-func (s *Stats) Alerts() []FrontendAlert {
+func (s *Stats) Alerts() []types.Alert {
 	s.alertsMu.RLock()
 	defer s.alertsMu.RUnlock()
-	result := make([]FrontendAlert, len(s.alerts))
+	result := make([]types.Alert, len(s.alerts))
 	copy(result, s.alerts)
 	return result
 }
@@ -120,8 +164,34 @@ func (s *Stats) WorkloadCount() int {
 	return 0
 }
 
-func ExecToFrontend(ev events.ExecEvent) FrontendExecEvent {
-	return FrontendExecEvent{
+func (s *Stats) RecentExecs() []types.ExecEvent {
+	s.recentMu.RLock()
+	defer s.recentMu.RUnlock()
+	result := make([]types.ExecEvent, len(s.recentExecs))
+	copy(result, s.recentExecs)
+	return result
+}
+
+func (s *Stats) RecentFiles() []types.FileEvent {
+	s.recentMu.RLock()
+	defer s.recentMu.RUnlock()
+	result := make([]types.FileEvent, len(s.recentFiles))
+	copy(result, s.recentFiles)
+	return result
+}
+
+func (s *Stats) RecentConnects() []types.ConnectEvent {
+	s.recentMu.RLock()
+	defer s.recentMu.RUnlock()
+	result := make([]types.ConnectEvent, len(s.recentConnects))
+	copy(result, s.recentConnects)
+	return result
+}
+
+var _ types.StatsProvider = (*Stats)(nil)
+
+func ExecToFrontend(ev events.ExecEvent) types.ExecEvent {
+	return types.ExecEvent{
 		Type:       "exec",
 		Timestamp:  time.Now().UnixMilli(),
 		PID:        ev.PID,
@@ -133,8 +203,8 @@ func ExecToFrontend(ev events.ExecEvent) FrontendExecEvent {
 	}
 }
 
-func FileToFrontend(ev events.FileOpenEvent, filename string) FrontendFileEvent {
-	return FrontendFileEvent{
+func FileToFrontend(ev events.FileOpenEvent, filename string) types.FileEvent {
+	return types.FileEvent{
 		Type:      "file",
 		Timestamp: time.Now().UnixMilli(),
 		PID:       ev.PID,
@@ -145,8 +215,8 @@ func FileToFrontend(ev events.FileOpenEvent, filename string) FrontendFileEvent 
 	}
 }
 
-func ConnectToFrontend(ev events.ConnectEvent, addr string) FrontendConnectEvent {
-	return FrontendConnectEvent{
+func ConnectToFrontend(ev events.ConnectEvent, addr string) types.ConnectEvent {
+	return types.ConnectEvent{
 		Type:      "connect",
 		Timestamp: time.Now().UnixMilli(),
 		PID:       ev.PID,
@@ -178,7 +248,6 @@ func (s *Stats) PublishEvent(event any) {
 		select {
 		case ch <- event:
 		default:
-			// Channel full, skip this subscriber
 		}
 	}
 }

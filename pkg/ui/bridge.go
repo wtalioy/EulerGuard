@@ -109,8 +109,8 @@ func (b *Bridge) HandleExec(ev events.ExecEvent) {
 }
 
 func (b *Bridge) HandleFileOpen(ev events.FileOpenEvent, filename string) {
-	b.stats.RecordFile()
 	frontendEvent := FileToFrontend(ev, filename)
+	b.stats.RecordFileEvent(frontendEvent)
 	b.stats.PublishEvent(frontendEvent)
 
 	b.mu.RLock()
@@ -158,8 +158,8 @@ func (b *Bridge) HandleFileOpen(ev events.FileOpenEvent, filename string) {
 }
 
 func (b *Bridge) HandleConnect(ev events.ConnectEvent) {
-	b.stats.RecordConnect()
 	frontendEvent := ConnectToFrontend(ev, formatAddr(ev))
+	b.stats.RecordConnectEvent(frontendEvent)
 	b.stats.PublishEvent(frontendEvent)
 
 	b.mu.RLock()

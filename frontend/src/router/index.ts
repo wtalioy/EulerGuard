@@ -38,6 +38,11 @@ const router = createRouter({
       path: '/kernel',
       name: 'kernel',
       component: () => import('../pages/KernelXRay.vue')
+    },
+    {
+      path: '/ai',
+      name: 'ai',
+      component: () => import('../pages/AIChat.vue')
     }
   ]
 })

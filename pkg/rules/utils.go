@@ -3,16 +3,18 @@ package rules
 import (
 	"strconv"
 	"strings"
+
+	"eulerguard/pkg/types"
 )
 
 // match a value against a pattern using the specified match type.
-func matchString(value, pattern string, matchType MatchType) bool {
+func matchString(value, pattern string, matchType types.MatchType) bool {
 	switch matchType {
-	case MatchTypeExact:
+	case types.MatchTypeExact:
 		return value == pattern
-	case MatchTypePrefix:
+	case types.MatchTypePrefix:
 		return strings.HasPrefix(value, pattern)
-	case MatchTypeContains:
+	case types.MatchTypeContains:
 		return strings.Contains(value, pattern)
 	default:
 		return strings.Contains(value, pattern)
@@ -28,22 +30,22 @@ func matchPID(pattern uint32, pid uint32) bool {
 }
 
 // Returns: matched (any rule matched), rule (the matching rule), allowed (should the action be allowed)
-func filterRulesByAction[T any](rules []*Rule, matchFn func(*Rule, T) bool, event T) (matched bool, rule *Rule, allowed bool) {
-	var blockRule *Rule
-	var alertRule *Rule
+func filterRulesByAction[T any](rules []*types.Rule, matchFn func(*types.Rule, T) bool, event T) (matched bool, rule *types.Rule, allowed bool) {
+	var blockRule *types.Rule
+	var alertRule *types.Rule
 
 	for _, r := range rules {
 		if !matchFn(r, event) {
 			continue
 		}
 		switch r.Action {
-		case ActionAllow:
+		case types.ActionAllow:
 			return true, r, true
-		case ActionBlock:
+		case types.ActionBlock:
 			if blockRule == nil {
 				blockRule = r
 			}
-		case ActionAlert:
+		case types.ActionAlert:
 			if alertRule == nil {
 				alertRule = r
 			}

@@ -146,6 +146,14 @@ watch(() => props.event, async (newEvent) => {
               <span class="detail-label">Flags</span>
               <span class="detail-value font-mono">{{ event.flags }}</span>
             </div>
+            <div v-if="event.ino" class="detail-row">
+              <span class="detail-label">Inode</span>
+              <span class="detail-value font-mono">{{ event.ino }}</span>
+            </div>
+            <div v-if="event.dev" class="detail-row">
+              <span class="detail-label">Device</span>
+              <span class="detail-value font-mono">{{ event.dev }}</span>
+            </div>
           </div>
         </section>
 

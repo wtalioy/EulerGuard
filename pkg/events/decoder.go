@@ -8,7 +8,7 @@ import (
 const (
 	// Event sizes: type(1) + fields + blocked(1)
 	MinExecEventSize     = 1 + 4 + 4 + 8 + TaskCommLen + TaskCommLen + PathMaxLen + 1 // 306 bytes
-	MinFileOpenEventSize = 1 + 4 + 8 + 4 + PathMaxLen + 1                             // 274 bytes
+	MinFileOpenEventSize = 1 + 4 + 8 + 4 + 8 + 8 + PathMaxLen + 1                     // 290 bytes
 	MinConnectEventSize  = 1 + 4 + 8 + 2 + 2 + 4 + 16 + 1                             // 38 bytes
 )
 
@@ -48,6 +48,10 @@ func DecodeFileOpenEvent(data []byte) (FileOpenEvent, error) {
 	offset += 8
 	ev.Flags = binary.LittleEndian.Uint32(data[offset : offset+4])
 	offset += 4
+	ev.Ino = binary.LittleEndian.Uint64(data[offset : offset+8])
+	offset += 8
+	ev.Dev = binary.LittleEndian.Uint64(data[offset : offset+8])
+	offset += 8
 	copy(ev.Filename[:], data[offset:offset+PathMaxLen])
 	ev.Blocked = data[len(data)-1]
 

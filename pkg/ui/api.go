@@ -7,6 +7,7 @@ import (
 
 	"eulerguard/pkg/profiler"
 	"eulerguard/pkg/rules"
+	"eulerguard/pkg/types"
 
 	"gopkg.in/yaml.v3"
 )
@@ -148,7 +149,7 @@ func (a *App) ApplyWhitelistRules(ruleIndices []int) error {
 
 	existingRules, err := rules.LoadRules(a.opts.RulesPath)
 	if err != nil {
-		existingRules = []rules.Rule{}
+		existingRules = []types.Rule{}
 	}
 
 	mergedRules := rules.MergeRules(existingRules, selectedRules)
@@ -279,7 +280,7 @@ func (a *App) GetRules() []RuleDTO {
 	return result
 }
 
-func buildMatchMap(rule rules.Rule) map[string]string {
+func buildMatchMap(rule types.Rule) map[string]string {
 	matchMap := make(map[string]string)
 	if rule.Match.ProcessName != "" {
 		matchMap["process_name"] = rule.Match.ProcessName
@@ -289,9 +290,6 @@ func buildMatchMap(rule rules.Rule) map[string]string {
 	}
 	if rule.Match.Filename != "" {
 		matchMap["filename"] = rule.Match.Filename
-	}
-	if rule.Match.FilePath != "" {
-		matchMap["file_path"] = rule.Match.FilePath
 	}
 	if rule.Match.DestPort != 0 {
 		matchMap["dest_port"] = fmt.Sprintf("%d", rule.Match.DestPort)

@@ -126,7 +126,7 @@ func (b *Bridge) HandleFileOpen(ev events.FileOpenEvent, filename string) {
 		return
 	}
 
-	matched, rule, allowed := re.MatchFile(filename, ev.PID, ev.CgroupID)
+	matched, rule, allowed := re.MatchFile(ev.Ino, ev.Dev, filename, ev.PID, ev.CgroupID)
 	if !matched || rule == nil || allowed {
 		return
 	}

@@ -34,6 +34,8 @@ struct file_open_event {
     u32 pid;
     u64 cgroup_id;
     u32 flags;
+    u64 ino;
+    u64 dev;
     char filename[PATH_MAX_LEN];
     u8 blocked;
 } __attribute__((packed));
@@ -69,11 +71,18 @@ struct {
     __type(value, u8);
 } blocked_ports SEC(".maps");
 
-// Per-CPU scratch buffers for path building (avoids stack overflow)
+struct {
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __uint(max_entries, 32768);
+    __type(key, u32);
+    __type(value, u32);
+} pid_to_ppid SEC(".maps");
+
 struct path_scratch {
     char path_buf[PATH_MAX_LEN];
     char filename[NAME_MAX];
     char parent[NAME_MAX];
+    char grandparent[NAME_MAX];
 };
 
 struct {
@@ -107,19 +116,37 @@ static __always_inline u8 check_file_action(struct dentry* dentry, char* out_pat
     bpf_probe_read_kernel_str(s->filename, NAME_MAX, d_name.name);
 
     struct dentry* parent_dentry = BPF_CORE_READ(dentry, d_parent);
+    struct dentry* grandparent_dentry = NULL;
     if (parent_dentry && parent_dentry != dentry) {
         struct qstr pd_name = BPF_CORE_READ(parent_dentry, d_name);
         if (pd_name.name && pd_name.len > 0 && pd_name.len < NAME_MAX) {
             bpf_probe_read_kernel_str(s->parent, NAME_MAX, pd_name.name);
         }
+        grandparent_dentry = BPF_CORE_READ(parent_dentry, d_parent);
+        if (grandparent_dentry && grandparent_dentry != parent_dentry) {
+            struct qstr gpd_name = BPF_CORE_READ(grandparent_dentry, d_name);
+            if (gpd_name.name && gpd_name.len > 0 && gpd_name.len < NAME_MAX) {
+                bpf_probe_read_kernel_str(s->grandparent, NAME_MAX, gpd_name.name);
+            }
+        }
     }
 
     int pos = 0;
-    for (int i = 0; i < NAME_MAX - 1 && s->parent[i] && pos < PATH_MAX_LEN - 2; i++) {
-        s->path_buf[pos++] = s->parent[i];
+    if (s->grandparent[0]) {
+        for (int i = 0; i < NAME_MAX - 1 && s->grandparent[i] && pos < PATH_MAX_LEN - 2; i++) {
+            s->path_buf[pos++] = s->grandparent[i];
+        }
+        if ((s->parent[0] || s->filename[0]) && pos < PATH_MAX_LEN - 1) {
+            s->path_buf[pos++] = '/';
+        }
     }
-    if (pos > 0 && pos < PATH_MAX_LEN - 1) {
-        s->path_buf[pos++] = '/';
+    if (s->parent[0]) {
+        for (int i = 0; i < NAME_MAX - 1 && s->parent[i] && pos < PATH_MAX_LEN - 2; i++) {
+            s->path_buf[pos++] = s->parent[i];
+        }
+        if (s->filename[0] && pos < PATH_MAX_LEN - 1) {
+            s->path_buf[pos++] = '/';
+        }
     }
     for (int i = 0; i < NAME_MAX - 1 && s->filename[i] && pos < PATH_MAX_LEN - 1; i++) {
         s->path_buf[pos++] = s->filename[i];
@@ -130,7 +157,25 @@ static __always_inline u8 check_file_action(struct dentry* dentry, char* out_pat
     if (action)
         return *action;
 
-    // Fallback: try just filename (for rules without path)
+    // fallback - try parent/filename when available
+    if (s->parent[0]) {
+        __builtin_memset(s->path_buf, 0, PATH_MAX_LEN);
+        pos = 0;
+        for (int i = 0; i < NAME_MAX - 1 && s->parent[i] && pos < PATH_MAX_LEN - 2; i++) {
+            s->path_buf[pos++] = s->parent[i];
+        }
+        if (s->filename[0] && pos < PATH_MAX_LEN - 1) {
+            s->path_buf[pos++] = '/';
+        }
+        for (int i = 0; i < NAME_MAX - 1 && s->filename[i] && pos < PATH_MAX_LEN - 1; i++) {
+            s->path_buf[pos++] = s->filename[i];
+        }
+        action = bpf_map_lookup_elem(&monitored_files, s->path_buf);
+        if (action)
+            return *action;
+    }
+
+    // final fallback - try just filename (for simple rules)
     __builtin_memset(s->path_buf, 0, PATH_MAX_LEN);
     __builtin_memcpy(s->path_buf, s->filename, NAME_MAX);
     action = bpf_map_lookup_elem(&monitored_files, s->path_buf);
@@ -175,6 +220,7 @@ int BPF_PROG(lsm_bprm_check, struct linux_binprm* bprm)
     event->type = EVENT_TYPE_EXEC;
     event->pid = pid;
     event->ppid = get_parent_pid(task);
+    bpf_map_update_elem(&pid_to_ppid, &pid, &event->ppid, BPF_ANY);
     event->cgroup_id = bpf_get_current_cgroup_id();
     __builtin_memcpy(event->filename, s->path_buf, PATH_MAX_LEN);
     bpf_get_current_comm(&event->comm, sizeof(event->comm));
@@ -225,6 +271,18 @@ int BPF_PROG(lsm_file_open, struct file* file)
     event->pid = pid;
     event->cgroup_id = bpf_get_current_cgroup_id();
     event->flags = BPF_CORE_READ(file, f_flags);
+    event->ino = 0;
+    event->dev = 0;
+    if (file) {
+        struct inode* inode = BPF_CORE_READ(file, f_inode);
+        if (inode) {
+            event->ino = BPF_CORE_READ(inode, i_ino);
+            struct super_block* sb = BPF_CORE_READ(inode, i_sb);
+            if (sb) {
+                event->dev = BPF_CORE_READ(sb, s_dev);
+            }
+        }
+    }
     __builtin_memcpy(event->filename, s->path_buf, PATH_MAX_LEN);
     event->blocked = blocked;
     bpf_ringbuf_submit(event, 0);

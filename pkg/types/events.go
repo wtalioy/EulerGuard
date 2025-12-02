@@ -17,6 +17,8 @@ type FileEvent struct {
 	PID       uint32 `json:"pid"`
 	CgroupID  string `json:"cgroupId"`
 	Flags     uint32 `json:"flags"`
+	Ino       uint64 `json:"ino,omitempty"`
+	Dev       uint64 `json:"dev,omitempty"`
 	Filename  string `json:"filename"`
 	Blocked   bool   `json:"blocked"`
 }

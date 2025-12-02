@@ -35,21 +35,21 @@ rules:
 
   # ============================================
   # File Access Rules (file)
-  # action: block - actively blocks file access
-  # action: alert - only monitors and alerts
+  # `filename` accepts absolute paths, relative paths,
+  # or simple wildcards such as "logs/*".
   # ============================================
-  - name: Block specific file
-    description: Block access to README file
+  - name: Block Password File
+    description: Prevent any access to /etc/shadow
     severity: critical
     match:
-      filename: README.md
+      filename: /etc/shadow
     action: block
     type: file
-  - name: Monitor Access to Passwd File
-    description: Monitor access to /etc/passwd
+  - name: Monitor Project Docs
+    description: Alert on reads inside docs/
     severity: warning
     match:
-      filename: /etc/passwd
+      filename: docs/*
     action: alert
     type: file
 

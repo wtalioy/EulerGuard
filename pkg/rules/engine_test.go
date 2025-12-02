@@ -1,31 +1,35 @@
 package rules
 
 import (
+	"os"
+	"path/filepath"
+	"syscall"
 	"testing"
 
 	"eulerguard/pkg/events"
+	"eulerguard/pkg/types"
 )
 
 func TestMatchWithAllow_AllowRuleSuppressesAlerts(t *testing.T) {
-	rules := []Rule{
+	rules := []types.Rule{
 		{
 			Name:     "Alert on bash",
 			Severity: "high",
-			Action:   ActionAlert,
-			Match: MatchCondition{
+			Action:   types.ActionAlert,
+			Match: types.MatchCondition{
 				ProcessName:     "bash",
-				ProcessNameType: MatchTypeExact,
+				ProcessNameType: types.MatchTypeExact,
 			},
 		},
 		{
 			Name:     "Allow bash from sshd",
 			Severity: "info",
-			Action:   ActionAllow,
-			Match: MatchCondition{
+			Action:   types.ActionAllow,
+			Match: types.MatchCondition{
 				ProcessName:     "bash",
-				ProcessNameType: MatchTypeExact,
+				ProcessNameType: types.MatchTypeExact,
 				ParentName:      "sshd",
-				ParentNameType:  MatchTypeExact,
+				ParentNameType:  types.MatchTypeExact,
 			},
 		},
 	}
@@ -63,26 +67,26 @@ func TestMatchWithAllow_AllowRuleSuppressesAlerts(t *testing.T) {
 
 func TestMatchWithAllow_AllowRuleOrderIndependent(t *testing.T) {
 	// Test that allow rules work regardless of order in the rules list
-	rules := []Rule{
+	rules := []types.Rule{
 		// Allow rule BEFORE alert rule
 		{
 			Name:     "Allow bash from sshd",
 			Severity: "info",
-			Action:   ActionAllow,
-			Match: MatchCondition{
+			Action:   types.ActionAllow,
+			Match: types.MatchCondition{
 				ProcessName:     "bash",
-				ProcessNameType: MatchTypeExact,
+				ProcessNameType: types.MatchTypeExact,
 				ParentName:      "sshd",
-				ParentNameType:  MatchTypeExact,
+				ParentNameType:  types.MatchTypeExact,
 			},
 		},
 		{
 			Name:     "Alert on bash",
 			Severity: "high",
-			Action:   ActionAlert,
-			Match: MatchCondition{
+			Action:   types.ActionAlert,
+			Match: types.MatchCondition{
 				ProcessName:     "bash",
-				ProcessNameType: MatchTypeExact,
+				ProcessNameType: types.MatchTypeExact,
 			},
 		},
 	}
@@ -104,29 +108,44 @@ func TestMatchWithAllow_AllowRuleOrderIndependent(t *testing.T) {
 }
 
 func TestMatchFileWithAllow(t *testing.T) {
-	rules := []Rule{
+	dir := t.TempDir()
+	target := filepath.Join(dir, "critical.conf")
+	if err := os.WriteFile(target, []byte("secret"), 0o644); err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+
+	rules := []types.Rule{
 		{
-			Name:     "Alert on /etc/passwd",
+			Name:     "Alert on critical file",
 			Severity: "warning",
-			Action:   ActionAlert,
-			Match: MatchCondition{
-				Filename: "/etc/passwd",
+			Action:   types.ActionAlert,
+			Match: types.MatchCondition{
+				Filename: target,
 			},
 		},
 		{
-			Name:     "Allow /etc/passwd access",
+			Name:     "Allow critical file access",
 			Severity: "info",
-			Action:   ActionAllow,
-			Match: MatchCondition{
-				Filename: "/etc/passwd",
+			Action:   types.ActionAllow,
+			Match: types.MatchCondition{
+				Filename: target,
 			},
 		},
 	}
 
 	engine := NewEngine(rules)
 
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatalf("Failed to stat temp file: %v", err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatal("Expected Stat_t for temp file")
+	}
+
 	// Allow rule should take precedence
-	matched, rule, allowed := engine.MatchFile("/etc/passwd", 1234, 0)
+	matched, rule, allowed := engine.MatchFile(stat.Ino, uint64(stat.Dev), target, 1234, 0)
 	if !matched {
 		t.Error("Expected match")
 	}
@@ -139,20 +158,20 @@ func TestMatchFileWithAllow(t *testing.T) {
 }
 
 func TestMatchConnectWithAllow(t *testing.T) {
-	rules := []Rule{
+	rules := []types.Rule{
 		{
 			Name:     "Alert on port 443",
 			Severity: "info",
-			Action:   ActionAlert,
-			Match: MatchCondition{
+			Action:   types.ActionAlert,
+			Match: types.MatchCondition{
 				DestPort: 443,
 			},
 		},
 		{
 			Name:     "Allow port 443",
 			Severity: "info",
-			Action:   ActionAllow,
-			Match: MatchCondition{
+			Action:   types.ActionAllow,
+			Match: types.MatchCondition{
 				DestPort: 443,
 			},
 		},
@@ -177,21 +196,21 @@ func TestMatchConnectWithAllow(t *testing.T) {
 }
 
 func TestMergeRules(t *testing.T) {
-	existing := []Rule{
+	existing := []types.Rule{
 		{
 			Name:   "Existing Alert",
-			Action: ActionAlert,
-			Match: MatchCondition{
+			Action: types.ActionAlert,
+			Match: types.MatchCondition{
 				ProcessName: "curl",
 			},
 		},
 	}
 
-	newRules := []Rule{
+	newRules := []types.Rule{
 		{
 			Name:   "New Allow",
-			Action: ActionAllow,
-			Match: MatchCondition{
+			Action: types.ActionAllow,
+			Match: types.MatchCondition{
 				ProcessName: "bash",
 				ParentName:  "sshd",
 			},
@@ -199,8 +218,8 @@ func TestMergeRules(t *testing.T) {
 		// Duplicate of existing (should not be added)
 		{
 			Name:   "Duplicate",
-			Action: ActionAlert,
-			Match: MatchCondition{
+			Action: types.ActionAlert,
+			Match: types.MatchCondition{
 				ProcessName: "curl",
 			},
 		},
@@ -225,33 +244,33 @@ func TestMergeRules(t *testing.T) {
 
 func TestMultipleAlertsForSingleExecEvent(t *testing.T) {
 	// Test case: single exec event violating multiple alert rules
-	rules := []Rule{
+	rules := []types.Rule{
 		{
 			Name:        "Alert on bash execution",
 			Description: "bash shell execution detected",
 			Severity:    "medium",
-			Action:      ActionAlert,
-			Match: MatchCondition{
+			Action:      types.ActionAlert,
+			Match: types.MatchCondition{
 				ProcessName:     "bash",
-				ProcessNameType: MatchTypeExact,
+				ProcessNameType: types.MatchTypeExact,
 			},
 		},
 		{
 			Name:        "Alert on suspicious parent",
 			Description: "process spawned from suspicious parent",
 			Severity:    "high",
-			Action:      ActionAlert,
-			Match: MatchCondition{
+			Action:      types.ActionAlert,
+			Match: types.MatchCondition{
 				ParentName:     "wget",
-				ParentNameType: MatchTypeExact,
+				ParentNameType: types.MatchTypeExact,
 			},
 		},
 		{
 			Name:        "Alert on specific PID",
 			Description: "process with specific PID 1234",
 			Severity:    "low",
-			Action:      ActionAlert,
-			Match: MatchCondition{
+			Action:      types.ActionAlert,
+			Match: types.MatchCondition{
 				PID: 1234, // Exact PID match
 			},
 		},
@@ -306,16 +325,16 @@ func TestMultipleAlertsForSingleExecEvent(t *testing.T) {
 }
 
 func TestSaveAndLoadRules(t *testing.T) {
-	rules := []Rule{
+	rules := []types.Rule{
 		{
 			Name:        "Test Rule",
 			Description: "A test rule",
 			Severity:    "info",
-			Action:      ActionAllow,
-			Type:        RuleTypeExec,
-			Match: MatchCondition{
+			Action:      types.ActionAllow,
+			Type:        types.RuleTypeExec,
+			Match: types.MatchCondition{
 				ProcessName:     "test",
-				ProcessNameType: MatchTypeExact,
+				ProcessNameType: types.MatchTypeExact,
 			},
 		},
 	}
@@ -342,7 +361,7 @@ func TestSaveAndLoadRules(t *testing.T) {
 		t.Errorf("Expected name 'Test Rule', got '%s'", loaded[0].Name)
 	}
 
-	if loaded[0].Action != ActionAllow {
+	if loaded[0].Action != types.ActionAllow {
 		t.Errorf("Expected action 'allow', got '%s'", loaded[0].Action)
 	}
 }

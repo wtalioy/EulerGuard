@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"eulerguard/pkg/events"
-	"eulerguard/pkg/rules"
+	"eulerguard/pkg/types"
 	"eulerguard/pkg/utils"
 
 	"gopkg.in/yaml.v3"
@@ -132,11 +132,11 @@ func (p *Profiler) GetProfiles() []BehaviorProfile {
 	return result
 }
 
-func (p *Profiler) GenerateRules() []rules.Rule {
+func (p *Profiler) GenerateRules() []types.Rule {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	ruleList := make([]rules.Rule, 0, len(p.profiles))
+	ruleList := make([]types.Rule, 0, len(p.profiles))
 
 	for profile := range p.profiles {
 		rule := p.profileToRule(profile)
@@ -146,7 +146,7 @@ func (p *Profiler) GenerateRules() []rules.Rule {
 	return ruleList
 }
 
-func (p *Profiler) GenerateRulesFiltered(indices []int) []rules.Rule {
+func (p *Profiler) GenerateRulesFiltered(indices []int) []types.Rule {
 	allRules := p.GenerateRules()
 	if len(indices) == 0 {
 		return allRules
@@ -157,7 +157,7 @@ func (p *Profiler) GenerateRulesFiltered(indices []int) []rules.Rule {
 		indexSet[i] = true
 	}
 
-	result := make([]rules.Rule, 0, len(indices))
+	result := make([]types.Rule, 0, len(indices))
 	for i, rule := range allRules {
 		if indexSet[i] {
 			result = append(result, rule)
@@ -166,8 +166,8 @@ func (p *Profiler) GenerateRulesFiltered(indices []int) []rules.Rule {
 	return result
 }
 
-func (p *Profiler) profileToRule(profile BehaviorProfile) rules.Rule {
-	rule := rules.Rule{
+func (p *Profiler) profileToRule(profile BehaviorProfile) types.Rule {
+	rule := types.Rule{
 		Description: "Auto-generated from learning mode",
 		Severity:    "info",
 		Action:      "allow",
@@ -176,25 +176,25 @@ func (p *Profiler) profileToRule(profile BehaviorProfile) rules.Rule {
 	switch profile.Type {
 	case events.EventTypeExec:
 		rule.Name = fmt.Sprintf("Allow %s from %s", profile.Process, profile.Parent)
-		rule.Type = rules.RuleTypeExec
-		rule.Match = rules.MatchCondition{
+		rule.Type = types.RuleTypeExec
+		rule.Match = types.MatchCondition{
 			ProcessName:     profile.Process,
-			ProcessNameType: rules.MatchTypeExact,
+			ProcessNameType: types.MatchTypeExact,
 			ParentName:      profile.Parent,
-			ParentNameType:  rules.MatchTypeExact,
+			ParentNameType:  types.MatchTypeExact,
 		}
 
 	case events.EventTypeFileOpen:
 		rule.Name = fmt.Sprintf("Allow access to %s", profile.File)
-		rule.Type = rules.RuleTypeFile
-		rule.Match = rules.MatchCondition{
+		rule.Type = types.RuleTypeFile
+		rule.Match = types.MatchCondition{
 			Filename: profile.File,
 		}
 
 	case events.EventTypeConnect:
 		rule.Name = fmt.Sprintf("Allow connection to port %d", profile.Port)
-		rule.Type = rules.RuleTypeConnect
-		rule.Match = rules.MatchCondition{
+		rule.Type = types.RuleTypeConnect
+		rule.Match = types.MatchCondition{
 			DestPort: profile.Port,
 		}
 	}
@@ -205,7 +205,7 @@ func (p *Profiler) profileToRule(profile BehaviorProfile) rules.Rule {
 func (p *Profiler) SaveYAML(path string) error {
 	ruleList := p.GenerateRules()
 
-	ruleSet := rules.RuleSet{
+	ruleSet := types.RuleSet{
 		Rules: ruleList,
 	}
 

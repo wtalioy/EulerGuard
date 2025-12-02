@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"syscall"
 
 	"eulerguard/pkg/config"
@@ -11,6 +12,7 @@ import (
 	"eulerguard/pkg/events"
 	"eulerguard/pkg/proc"
 	"eulerguard/pkg/rules"
+	"eulerguard/pkg/types"
 	"eulerguard/pkg/utils"
 	"eulerguard/pkg/workload"
 
@@ -23,7 +25,7 @@ type Core struct {
 	Objs             *ebpf.LSMObjects
 	Links            []link.Link
 	Reader           *ringbuf.Reader
-	Rules            []rules.Rule
+	Rules            []types.Rule
 	RuleEngine       *rules.Engine
 	ProcessTree      *proc.ProcessTree
 	WorkloadRegistry *workload.Registry
@@ -46,6 +48,9 @@ func Init(opts config.Options) (*Core, error) {
 		return nil, fmt.Errorf("load eBPF LSM objects: %w", err)
 	}
 	c.Objs = objs
+	if c.ProcessTree != nil && c.Objs.PidToPpid != nil {
+		c.ProcessTree.SetPIDResolver(newPIDResolver(c.Objs.PidToPpid))
+	}
 
 	links, err := AttachLSMHooks(objs)
 	if err != nil {
@@ -97,7 +102,7 @@ func (c *Core) ReloadRules() error {
 	return nil
 }
 
-func RepopulateMonitoredFiles(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPath string) error {
+func RepopulateMonitoredFiles(bpfMap *cebpf.Map, ruleList []types.Rule, rulesPath string) error {
 	if bpfMap == nil {
 		return fmt.Errorf("monitored_files map is nil")
 	}
@@ -118,7 +123,7 @@ func RepopulateMonitoredFiles(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPat
 	return PopulateMonitoredFiles(bpfMap, ruleList, rulesPath)
 }
 
-func RepopulateBlockedPorts(bpfMap *cebpf.Map, ruleList []rules.Rule) error {
+func RepopulateBlockedPorts(bpfMap *cebpf.Map, ruleList []types.Rule) error {
 	if bpfMap == nil {
 		return fmt.Errorf("blocked_ports map is nil")
 	}
@@ -186,47 +191,45 @@ func CloseLinks(links []link.Link) {
 	}
 }
 
-func LoadRules(rulesPath string) ([]rules.Rule, *rules.Engine) {
+func LoadRules(rulesPath string) ([]types.Rule, *rules.Engine) {
 	loadedRules, err := rules.LoadRules(rulesPath)
 	if err != nil {
 		log.Printf("Warning: failed to load rules from %s: %v", rulesPath, err)
-		loadedRules = []rules.Rule{}
+		loadedRules = []types.Rule{}
 	} else {
 		log.Printf("Loaded %d detection rules from %s", len(loadedRules), rulesPath)
 	}
 	return loadedRules, rules.NewEngine(loadedRules)
 }
 
-func PopulateMonitoredFiles(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPath string) error {
+func PopulateMonitoredFiles(bpfMap *cebpf.Map, ruleList []types.Rule, rulesPath string) error {
 	if bpfMap == nil {
 		return fmt.Errorf("monitored_files map is nil")
 	}
 
 	fileActions := make(map[string]uint8)
 	for _, rule := range ruleList {
-		var path string
-		if rule.Match.Filename != "" {
-			path = rule.Match.Filename
-		} else if rule.Match.FilePath != "" {
-			path = rule.Match.FilePath
-		} else {
+		paths := rule.Match.ExactPathKeys()
+		if len(paths) == 0 {
 			continue
 		}
 
-		key := extractParentFilename(path)
-		if key == "" {
-			continue
-		}
+		for _, path := range paths {
+			key := extractParentFilename(path)
+			if key == "" {
+				continue
+			}
 
-		var action uint8
-		if rule.Action == rules.ActionBlock {
-			action = rules.BPFActionBlock
-		} else {
-			action = rules.BPFActionMonitor
-		}
+			var action uint8
+			if rule.Action == types.ActionBlock {
+				action = types.BPFActionBlock
+			} else {
+				action = types.BPFActionMonitor
+			}
 
-		if existing, ok := fileActions[key]; !ok || action > existing {
-			fileActions[key] = action
+			if existing, ok := fileActions[key]; !ok || action > existing {
+				fileActions[key] = action
+			}
 		}
 	}
 
@@ -243,7 +246,7 @@ func PopulateMonitoredFiles(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPath 
 		if err := bpfMap.Put(key, action); err != nil {
 			return fmt.Errorf("add file %q to BPF map: %w", filename, err)
 		}
-		if action == rules.BPFActionBlock {
+		if action == types.BPFActionBlock {
 			countBlock++
 		} else {
 			countMonitor++
@@ -255,7 +258,6 @@ func PopulateMonitoredFiles(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPath 
 	return nil
 }
 
-
 func extractParentFilename(path string) string {
 	for len(path) > 0 && path[0] == '/' {
 		path = path[1:]
@@ -264,29 +266,16 @@ func extractParentFilename(path string) string {
 		return ""
 	}
 
-	lastSlash := -1
-	secondLastSlash := -1
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '/' {
-			if lastSlash == -1 {
-				lastSlash = i
-			} else {
-				secondLastSlash = i
-				break
-			}
-		}
+	segments := strings.FieldsFunc(path, func(r rune) bool { return r == '/' })
+	if len(segments) == 0 {
+		return ""
 	}
 
-	if lastSlash == -1 {
-		return path
-	}
-	if secondLastSlash == -1 {
-		return path
-	}
-	return path[secondLastSlash+1:]
+	start := max(len(segments)-3, 0)
+	return strings.Join(segments[start:], "/")
 }
 
-func PopulateBlockedPorts(bpfMap *cebpf.Map, ruleList []rules.Rule) error {
+func PopulateBlockedPorts(bpfMap *cebpf.Map, ruleList []types.Rule) error {
 	if bpfMap == nil {
 		return fmt.Errorf("blocked_ports map is nil")
 	}
@@ -298,10 +287,10 @@ func PopulateBlockedPorts(bpfMap *cebpf.Map, ruleList []rules.Rule) error {
 		}
 
 		var action uint8
-		if rule.Action == rules.ActionBlock {
-			action = rules.BPFActionBlock
+		if rule.Action == types.ActionBlock {
+			action = types.BPFActionBlock
 		} else {
-			action = rules.BPFActionMonitor
+			action = types.BPFActionMonitor
 		}
 
 		port := rule.Match.DestPort
@@ -320,7 +309,7 @@ func PopulateBlockedPorts(bpfMap *cebpf.Map, ruleList []rules.Rule) error {
 		if err := bpfMap.Put(port, action); err != nil {
 			return fmt.Errorf("add port %d to BPF map: %w", port, err)
 		}
-		if action == rules.BPFActionBlock {
+		if action == types.BPFActionBlock {
 			countBlock++
 		} else {
 			countMonitor++
@@ -330,6 +319,20 @@ func PopulateBlockedPorts(bpfMap *cebpf.Map, ruleList []rules.Rule) error {
 	log.Printf("Populated BPF map with %d monitored ports (%d block, %d monitor)",
 		len(portActions), countBlock, countMonitor)
 	return nil
+}
+
+func newPIDResolver(m *cebpf.Map) proc.PIDResolver {
+	if m == nil {
+		return nil
+	}
+
+	return func(pid uint32) (uint32, bool) {
+		var parent uint32
+		if err := m.Lookup(&pid, &parent); err != nil {
+			return 0, false
+		}
+		return parent, true
+	}
 }
 
 func EventLoop(reader *ringbuf.Reader, handlers *events.HandlerChain, processTree *proc.ProcessTree, registry *workload.Registry) error {

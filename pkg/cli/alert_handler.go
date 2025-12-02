@@ -26,7 +26,7 @@ func (h *cliAlertHandler) HandleExec(ev events.ExecEvent) {
 }
 
 func (h *cliAlertHandler) HandleFileOpen(ev events.FileOpenEvent, filename string) {
-	matched, rule, allowed := h.ruleEngine.MatchFile(filename, ev.PID, ev.CgroupID)
+	matched, rule, allowed := h.ruleEngine.MatchFile(ev.Ino, ev.Dev, filename, ev.PID, ev.CgroupID)
 	if !matched || rule == nil || allowed {
 		return
 	}

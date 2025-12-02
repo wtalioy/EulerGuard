@@ -63,6 +63,8 @@ export interface FileEvent {
     pid: number
     cgroupId: string
     flags: number
+    ino?: number
+    dev?: number
     filename: string
     blocked?: boolean
 }

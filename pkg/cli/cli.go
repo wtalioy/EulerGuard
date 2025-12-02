@@ -14,6 +14,7 @@ import (
 	"eulerguard/pkg/profiler"
 	"eulerguard/pkg/rules"
 	"eulerguard/pkg/tracer"
+	"eulerguard/pkg/types"
 )
 
 type CLI struct {
@@ -95,7 +96,7 @@ func (cli *CLI) runLearnModeTimer(ctx context.Context, cancel context.CancelFunc
 		} else {
 			existingRules, err := rules.LoadRules(cli.Opts.RulesPath)
 			if err != nil {
-				existingRules = []rules.Rule{}
+				existingRules = []types.Rule{}
 			}
 
 			mergedRules := rules.MergeRules(existingRules, generatedRules)

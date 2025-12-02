@@ -16,6 +16,7 @@ type LSMObjects struct {
 	Events         *ebpf.Map `ebpf:"events"`
 	MonitoredFiles *ebpf.Map `ebpf:"monitored_files"`
 	BlockedPorts   *ebpf.Map `ebpf:"blocked_ports"`
+	PidToPpid      *ebpf.Map `ebpf:"pid_to_ppid"`
 }
 
 func LoadLSMObjects(objPath string, ringBufSize int) (*LSMObjects, error) {

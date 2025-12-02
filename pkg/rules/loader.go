@@ -6,16 +6,18 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"eulerguard/pkg/types"
+
 	"gopkg.in/yaml.v3"
 )
 
-func LoadRules(filePath string) ([]Rule, error) {
+func LoadRules(filePath string) ([]types.Rule, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read rules file: %w", err)
 	}
 
-	var ruleSet RuleSet
+	var ruleSet types.RuleSet
 	if err := yaml.Unmarshal(data, &ruleSet); err != nil {
 		return nil, fmt.Errorf("failed to parse rules YAML: %w", err)
 	}
@@ -33,8 +35,8 @@ func LoadRules(filePath string) ([]Rule, error) {
 	return ruleSet.Rules, nil
 }
 
-func SaveRules(filePath string, ruleList []Rule) error {
-	ruleSet := RuleSet{
+func SaveRules(filePath string, ruleList []types.Rule) error {
+	ruleSet := types.RuleSet{
 		Rules: ruleList,
 	}
 
@@ -78,14 +80,14 @@ func SaveRules(filePath string, ruleList []Rule) error {
 	return nil
 }
 
-func MergeRules(existing []Rule, newRules []Rule) []Rule {
+func MergeRules(existing []types.Rule, newRules []types.Rule) []types.Rule {
 	existingSet := make(map[string]bool)
 	for _, r := range existing {
 		sig := ruleSignature(r)
 		existingSet[sig] = true
 	}
 
-	result := make([]Rule, len(existing))
+	result := make([]types.Rule, len(existing))
 	copy(result, existing)
 
 	for _, r := range newRules {
@@ -99,12 +101,11 @@ func MergeRules(existing []Rule, newRules []Rule) []Rule {
 	return result
 }
 
-func ruleSignature(r Rule) string {
-	return fmt.Sprintf("%s|%s|%s|%s|%s|%d|%s",
+func ruleSignature(r types.Rule) string {
+	return fmt.Sprintf("%s|%s|%s|%s|%d|%s",
 		r.Match.ProcessName,
 		r.Match.ParentName,
 		r.Match.Filename,
-		r.Match.FilePath,
 		r.Match.DestIP,
 		r.Match.DestPort,
 		r.Action,

@@ -19,6 +19,8 @@ type ProcessInfo struct {
 	Timestamp time.Time
 }
 
+type PIDResolver func(pid uint32) (uint32, bool)
+
 type ProcessTree struct {
 	processes      sync.Map
 	timeIndex      *timeIndex
@@ -26,6 +28,8 @@ type ProcessTree struct {
 	maxSize        int
 	maxChainLength int
 	size           atomic.Int32
+	resolverMu     sync.RWMutex
+	resolver       PIDResolver
 }
 
 func NewProcessTree(maxAge time.Duration, maxSize int, maxChainLength int) *ProcessTree {
@@ -35,6 +39,8 @@ func NewProcessTree(maxAge time.Duration, maxSize int, maxChainLength int) *Proc
 		maxSize:        maxSize,
 		maxChainLength: maxChainLength,
 	}
+
+	pt.SetPIDResolver(nil)
 
 	go func() {
 		if err := pt.seedFromProc(); err != nil {
@@ -68,9 +74,6 @@ func (pt *ProcessTree) seedFromProc() error {
 		if err != nil {
 			continue
 		}
-
-		// Pre-populate the cgroup path cache for this long-running process
-		// This ensures we have paths cached before short-lived processes start
 		if info.CgroupID != 0 && cgroupPath != "" {
 			cgroupPathCache.Store(info.CgroupID, cgroupPath)
 		}
@@ -180,19 +183,40 @@ func (pt *ProcessTree) GetAncestors(pid uint32) []*ProcessInfo {
 
 		info, ok := pt.GetProcess(currentPID)
 		if !ok {
-			break
+			if resolver := pt.getPIDResolver(); resolver != nil {
+				if ppid, resolved := resolver(currentPID); resolved {
+					info = &ProcessInfo{
+						PID:       currentPID,
+						PPID:      ppid,
+						Timestamp: time.Now(),
+					}
+				} else {
+					break
+				}
+			} else {
+				break
+			}
 		}
 		chain = append(chain, info)
-
-		// Stop at workload boundary (cgroup change)
-		if len(chain) > 1 && info.CgroupID != chain[0].CgroupID {
+		if len(chain) > 1 && info.CgroupID != 0 && chain[0].CgroupID != 0 && info.CgroupID != chain[0].CgroupID {
 			break
 		}
-
 		currentPID = info.PPID
 	}
 
 	return chain
+}
+
+func (pt *ProcessTree) SetPIDResolver(resolver PIDResolver) {
+	pt.resolverMu.Lock()
+	defer pt.resolverMu.Unlock()
+	pt.resolver = resolver
+}
+
+func (pt *ProcessTree) getPIDResolver() PIDResolver {
+	pt.resolverMu.RLock()
+	defer pt.resolverMu.RUnlock()
+	return pt.resolver
 }
 
 func (pt *ProcessTree) cleanupLoop() {

@@ -210,6 +210,8 @@ func FileToFrontend(ev events.FileOpenEvent, filename string) types.FileEvent {
 		PID:       ev.PID,
 		CgroupID:  strconv.FormatUint(ev.CgroupID, 10),
 		Flags:     ev.Flags,
+		Ino:       ev.Ino,
+		Dev:       ev.Dev,
 		Filename:  filename,
 		Blocked:   ev.Blocked == 1,
 	}

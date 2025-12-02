@@ -3,11 +3,11 @@ package output
 import (
 	"eulerguard/pkg/events"
 	"eulerguard/pkg/proc"
-	"eulerguard/pkg/rules"
+	"eulerguard/pkg/types"
 	"time"
 )
 
-func (p *Printer) PrintAlert(alert rules.Alert) {
+func (p *Printer) PrintAlert(alert types.MatchedAlert) {
 	blocked := alert.Event.Event.Blocked == 1
 	action := string(alert.Rule.Action)
 
@@ -41,7 +41,7 @@ func (p *Printer) PrintAlert(alert rules.Alert) {
 	p.emitColoredAlert(alert.Rule.Severity, alertText)
 }
 
-func (p *Printer) PrintFileOpenAlert(ev *events.FileOpenEvent, chain []*proc.ProcessInfo, rule *rules.Rule, filename string) {
+func (p *Printer) PrintFileOpenAlert(ev *events.FileOpenEvent, chain []*proc.ProcessInfo, rule *types.Rule, filename string) {
 	blocked := ev.Blocked == 1
 	action := string(rule.Action)
 
@@ -73,7 +73,7 @@ func (p *Printer) PrintFileOpenAlert(ev *events.FileOpenEvent, chain []*proc.Pro
 	p.emitColoredAlert(rule.Severity, alertText)
 }
 
-func (p *Printer) PrintConnectAlert(ev *events.ConnectEvent, chain []*proc.ProcessInfo, rule *rules.Rule) {
+func (p *Printer) PrintConnectAlert(ev *events.ConnectEvent, chain []*proc.ProcessInfo, rule *types.Rule) {
 	destAddr := formatAddress(ev)
 	blocked := ev.Blocked == 1
 	action := string(rule.Action)

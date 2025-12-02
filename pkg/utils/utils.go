@@ -1,9 +1,13 @@
 package utils
 
 import (
+	"slices"
 	"bytes"
-	"eulerguard/pkg/events"
 	"net"
+	"path/filepath"
+	"strings"
+	
+	"eulerguard/pkg/events"
 )
 
 // extract a null-terminated C string from a byte array
@@ -29,4 +33,43 @@ func ExtractIP(event *events.ConnectEvent) string {
 		return net.IP(event.AddrV6[:]).String()
 	}
 	return ""
+}
+
+// normalize a filename by cleaning the path and stripping leading slashes
+func NormalizeFilename(path string) string {
+	if path == "" {
+		return ""
+	}
+	clean := filepath.Clean(path)
+	if clean == "." {
+		return ""
+	}
+	return strings.TrimLeft(clean, "/")
+}
+
+// return canonical and relative forms of a path for matching.
+func PathVariants(path string) []string {
+	if path == "" {
+		return nil
+	}
+	clean := filepath.Clean(path)
+	if clean == "." || clean == "" {
+		return nil
+	}
+
+	var variants []string
+	add := func(val string) {
+		if val == "" {
+			return
+		}
+		if slices.Contains(variants, val) {
+			return
+		}
+		variants = append(variants, val)
+	}
+
+	add(clean)
+	trimmed := strings.TrimLeft(clean, "/")
+	add(trimmed)
+	return variants
 }

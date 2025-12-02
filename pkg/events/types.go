@@ -28,6 +28,8 @@ type FileOpenEvent struct {
 	PID      uint32
 	CgroupID uint64
 	Flags    uint32
+	Ino      uint64
+	Dev      uint64
 	Filename [PathMaxLen]byte
 	Blocked  uint8
 }

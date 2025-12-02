@@ -168,7 +168,7 @@ func (p *Profiler) GenerateRulesFiltered(indices []int) []types.Rule {
 
 func (p *Profiler) profileToRule(profile BehaviorProfile) types.Rule {
 	rule := types.Rule{
-		Description: "Auto-generated from learning mode",
+		Description: "Auto-generated from profiler",
 		Severity:    "info",
 		Action:      "allow",
 	}

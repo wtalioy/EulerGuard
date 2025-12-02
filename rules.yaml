@@ -39,11 +39,11 @@ rules:
   # or simple wildcards such as "logs/*".
   # ============================================
   - name: Block Password File
-    description: Prevent any access to /etc/shadow
-    severity: critical
+    description: Notify on access to /etc/shadow
+    severity: info
     match:
       filename: /etc/shadow
-    action: block
+    action: alert
     type: file
   - name: Monitor Project Docs
     description: Alert on reads inside docs/

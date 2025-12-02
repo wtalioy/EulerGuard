@@ -55,7 +55,7 @@ const filteredAlerts = computed(() => {
   // Filter by search query
   if (searchQuery.value.trim()) {
     const query = searchQuery.value.toLowerCase()
-    result = result.filter(a => 
+    result = result.filter(a =>
       a.ruleName.toLowerCase().includes(query) ||
       a.processName.toLowerCase().includes(query) ||
       a.description.toLowerCase().includes(query) ||
@@ -63,7 +63,8 @@ const filteredAlerts = computed(() => {
     )
   }
 
-  return result
+  // Reverse order so newest events appear at the top
+  return result.slice().reverse()
 })
 
 const clearWorkloadFilter = () => {
@@ -129,12 +130,14 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
       <div class="header-stats">
         <!-- Action Stats (Blocked vs Alerted) -->
         <div class="stat-group action-stats">
-          <div class="stat-badge blocked" :class="{ active: filterAction === 'blocked' }" @click="filterAction = filterAction === 'blocked' ? 'all' : 'blocked'">
+          <div class="stat-badge blocked" :class="{ active: filterAction === 'blocked' }"
+            @click="filterAction = filterAction === 'blocked' ? 'all' : 'blocked'">
             <ShieldOff :size="14" class="stat-icon" />
             <span class="stat-value">{{ actionCounts.blocked }}</span>
             <span class="stat-label">Blocked</span>
           </div>
-          <div class="stat-badge alerted" :class="{ active: filterAction === 'alerted' }" @click="filterAction = filterAction === 'alerted' ? 'all' : 'alerted'">
+          <div class="stat-badge alerted" :class="{ active: filterAction === 'alerted' }"
+            @click="filterAction = filterAction === 'alerted' ? 'all' : 'alerted'">
             <AlertTriangle :size="14" class="stat-icon" />
             <span class="stat-value">{{ actionCounts.alerted }}</span>
             <span class="stat-label">Alerted</span>
@@ -143,19 +146,23 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
 
         <!-- Severity Stats -->
         <div class="stat-group severity-stats">
-          <div class="stat-badge critical" :class="{ active: filterSeverity === 'critical' }" @click="filterSeverity = filterSeverity === 'critical' ? 'all' : 'critical'">
+          <div class="stat-badge critical" :class="{ active: filterSeverity === 'critical' }"
+            @click="filterSeverity = filterSeverity === 'critical' ? 'all' : 'critical'">
             <span class="stat-value">{{ severityCounts.critical }}</span>
             <span class="stat-label">Critical</span>
           </div>
-          <div class="stat-badge high" :class="{ active: filterSeverity === 'high' }" @click="filterSeverity = filterSeverity === 'high' ? 'all' : 'high'">
+          <div class="stat-badge high" :class="{ active: filterSeverity === 'high' }"
+            @click="filterSeverity = filterSeverity === 'high' ? 'all' : 'high'">
             <span class="stat-value">{{ severityCounts.high }}</span>
             <span class="stat-label">High</span>
           </div>
-          <div class="stat-badge warning" :class="{ active: filterSeverity === 'warning' }" @click="filterSeverity = filterSeverity === 'warning' ? 'all' : 'warning'">
+          <div class="stat-badge warning" :class="{ active: filterSeverity === 'warning' }"
+            @click="filterSeverity = filterSeverity === 'warning' ? 'all' : 'warning'">
             <span class="stat-value">{{ severityCounts.warning }}</span>
             <span class="stat-label">Warning</span>
           </div>
-          <div class="stat-badge info" :class="{ active: filterSeverity === 'info' }" @click="filterSeverity = filterSeverity === 'info' ? 'all' : 'info'">
+          <div class="stat-badge info" :class="{ active: filterSeverity === 'info' }"
+            @click="filterSeverity = filterSeverity === 'info' ? 'all' : 'info'">
             <span class="stat-value">{{ severityCounts.info }}</span>
             <span class="stat-label">Info</span>
           </div>
@@ -176,21 +183,12 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
         <div class="queue-filters">
           <div class="filter-search">
             <Search :size="16" class="search-icon" />
-            <input 
-              v-model="searchQuery"
-              type="text" 
-              placeholder="Search events..."
-              class="search-input"
-            />
-            <button 
-              v-if="searchQuery" 
-              class="search-clear" 
-              @click="searchQuery = ''"
-            >
+            <input v-model="searchQuery" type="text" placeholder="Search events..." class="search-input" />
+            <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''">
               <X :size="14" />
             </button>
           </div>
-          
+
           <div class="filter-row">
             <div class="filter-group">
               <Filter :size="14" class="filter-icon" />
@@ -202,7 +200,7 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
                 <option value="info">Info</option>
               </select>
             </div>
-            
+
             <div class="filter-group">
               <select v-model="filterAction" class="filter-select action-select">
                 <option value="all">All Actions</option>
@@ -232,24 +230,15 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
               Try adjusting your filters
             </span>
           </div>
-          <AlertCard
-            v-for="alert in filteredAlerts"
-            :key="alert.id"
-            :alert="alert"
-            :is-selected="selectedAlert?.id === alert.id"
-            @select="selectAlert"
-          />
+          <AlertCard v-for="alert in filteredAlerts" :key="alert.id" :alert="alert"
+            :is-selected="selectedAlert?.id === alert.id" @select="selectAlert" />
         </div>
       </div>
 
       <!-- Right Panel: Attack Chain Visualization -->
       <div class="chain-panel">
-        <AttackChain
-          :ancestors="ancestors"
-          :alert="selectedAlert"
-          :loading="loadingAncestors"
-          @refresh="refreshAncestors"
-        />
+        <AttackChain :ancestors="ancestors" :alert="selectedAlert" :loading="loadingAncestors"
+          @refresh="refreshAncestors" />
       </div>
     </div>
   </div>
@@ -354,13 +343,30 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
 
 /* Stat badge colors */
 .stat-badge.blocked .stat-value,
-.stat-badge.blocked .stat-icon { color: var(--status-blocked); }
+.stat-badge.blocked .stat-icon {
+  color: var(--status-blocked);
+}
+
 .stat-badge.alerted .stat-value,
-.stat-badge.alerted .stat-icon { color: var(--status-warning); }
-.stat-badge.critical .stat-value { color: var(--status-blocked); }
-.stat-badge.high .stat-value { color: var(--status-critical); }
-.stat-badge.warning .stat-value { color: var(--status-warning); }
-.stat-badge.info .stat-value { color: var(--status-info); }
+.stat-badge.alerted .stat-icon {
+  color: var(--status-warning);
+}
+
+.stat-badge.critical .stat-value {
+  color: var(--status-blocked);
+}
+
+.stat-badge.high .stat-value {
+  color: var(--status-critical);
+}
+
+.stat-badge.warning .stat-value {
+  color: var(--status-warning);
+}
+
+.stat-badge.info .stat-value {
+  color: var(--status-info);
+}
 
 /* Main Content Layout */
 .alerts-content {

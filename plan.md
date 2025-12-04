@@ -1,6 +1,8 @@
-# EulerGuard 3.0 技术规划书
+# Aegis 技术规划书
 
 **AI 原生内核安全智能体 (AI-Native Kernel Security Agent)**
+
+> ⚠️ **项目更名**: EulerGuard → Aegis（宙斯之盾），更好地体现 AI 原生安全平台的定位，不再与特定发行版绑定。
 
 ---
 
@@ -25,10 +27,10 @@
 ## 一、产品愿景
 
 ### 1.1 产品定位
-EulerGuard 不是一个"带 AI 功能的安全工具"，而是一个 **"AI 原生的内核安全智能体"**。
+Aegis 不是一个"带 AI 功能的安全工具"，而是一个 **"AI 原生的内核安全智能体"**。
 
 **传统安全工具** vs **AI 原生安全智能体**：
-| 维度 | 传统工具 | EulerGuard 3.0 |
+| 维度 | 传统工具 | Aegis |
 |------|---------|----------------|
 | 规则来源 | 人工编写 | AI 生成 + 人工审核 |
 | 交互方式 | GUI 配置 | 自然语言对话 |
@@ -762,7 +764,7 @@ pkg/ai/
 **3.3 意图解析 Prompt（`pkg/ai/prompt/intent.go`）**
 
 ```go
-const IntentSystemPrompt = `You are EulerGuard's intent parser. Parse user's natural language input and extract structured intent.
+const IntentSystemPrompt = `You are Aegis's intent parser. Parse user's natural language input and extract structured intent.
 
 Available intent types:
 - create_rule: User wants to create a security rule
@@ -794,7 +796,7 @@ Parse the intent:`
 **3.4 规则生成 Prompt（`pkg/ai/prompt/rulegen.go`）**
 
 ```go
-const RuleGenSystemPrompt = `You are EulerGuard's rule generator. Generate YAML security rules from natural language descriptions.
+const RuleGenSystemPrompt = `You are Aegis's rule generator. Generate YAML security rules from natural language descriptions.
 
 Rule schema:
 - name: kebab-case unique identifier
@@ -824,7 +826,7 @@ Generate rule:`
 **3.5 事件解释 Prompt（`pkg/ai/prompt/explain.go`）**
 
 ```go
-const ExplainSystemPrompt = `You are EulerGuard's security analyst. Explain security events in clear, actionable terms.
+const ExplainSystemPrompt = `You are Aegis's security analyst. Explain security events in clear, actionable terms.
 
 When explaining an event:
 1. What happened (technical details)
@@ -1347,7 +1349,7 @@ Response: {
   ```
 - **Prompt 设计**：
   ```
-  You are EulerGuard's AI assistant for kernel security.
+  You are Aegis's AI assistant for kernel security.
   Parse the user's intent from their natural language input.
   
   User Input: "{{input}}"
@@ -1672,7 +1674,7 @@ pkg/ai/prompt/
 用户 → 点击菜单 → 填写表单 → 提交配置 → 等待生效
 ```
 
-EulerGuard AI 原生交互模式：
+Aegis AI 原生交互模式：
 ```
 用户 → 自然语言描述意图 → AI 理解并生成方案 → 用户审核确认 → 自动部署
 ```
@@ -1743,7 +1745,7 @@ EulerGuard AI 原生交互模式：
 - **交互模式**：
   ```
   ┌──────────────────────────────────────────────────────────────┐
-  │ 🧠 Ask EulerGuard anything...                                │
+  │ 🧠 Ask Aegis anything...                                     │
   │ ──────────────────────────────────────────────────────────── │
   │                                                              │
   │ 💡 Try:                                                      │
@@ -2432,7 +2434,7 @@ test('AI 规则创建端到端流程', async ({ page }) => {
 
 ## 八、总结与展望
 
-EulerGuard 3.0 的 AI 原生前端重构将安全工具从"仪表板驱动"转变为"对话驱动"。核心创新点：
+Aegis 的 AI 原生前端重构将安全工具从"仪表板驱动"转变为"对话驱动"。核心创新点：
 
 1. **AI Omnibox**：统一入口，自然语言操作，告别繁琐的表单和导航
 2. **意图驱动**：AI 理解用户意图，主动生成操作方案

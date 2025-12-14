@@ -1,8 +1,8 @@
 package output
 
 import (
-	"eulerguard/pkg/events"
-	"eulerguard/pkg/utils"
+	"aegis/pkg/events"
+	"aegis/pkg/utils"
 	"strings"
 	"time"
 )
@@ -10,8 +10,8 @@ import (
 func (p *Printer) Print(ev events.ExecEvent) events.ProcessedEvent {
 	meta := events.ProcessedEvent{
 		Event:     ev,
-		Timestamp: time.Now().UTC(),
-		Process:   normalizeCommand(utils.ExtractCString(ev.Comm[:])),
+		Timestamp: ev.Hdr.Timestamp(),
+		Process:   normalizeCommand(utils.ExtractCString(ev.Hdr.Comm[:])),
 		Parent:    normalizeCommand(utils.ExtractCString(ev.PComm[:])),
 		Rate:      p.meter.Tick(),
 	}
@@ -23,9 +23,9 @@ func (p *Printer) Print(ev events.ExecEvent) events.ProcessedEvent {
 
 	p.writeLine("[%s] Process executed: PID=%d(%s) ← PPID=%d(%s) | Cgroup=%d | %.1f ev/s\n",
 		meta.Timestamp.Format(time.RFC3339),
-		meta.Event.PID, meta.Process,
+		meta.Event.Hdr.PID, meta.Process,
 		meta.Event.PPID, meta.Parent,
-		meta.Event.CgroupID,
+		meta.Event.Hdr.CgroupID,
 		meta.Rate)
 
 	return meta

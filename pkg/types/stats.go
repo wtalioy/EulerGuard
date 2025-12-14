@@ -5,7 +5,6 @@ type StatsProvider interface {
 	WorkloadCount() int
 	TotalAlertCount() int64
 	Alerts() []Alert
-	RecentExecs() []ExecEvent
-	RecentFiles() []FileEvent
-	RecentConnects() []ConnectEvent
+	// RecentExecs, RecentFiles, RecentConnects have been removed.
+	// Event storage will be implemented in Phase 1 with TimeRingBuffer.
 }

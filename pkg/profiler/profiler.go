@@ -5,9 +5,9 @@ import (
 	"os"
 	"sync"
 
-	"eulerguard/pkg/events"
-	"eulerguard/pkg/types"
-	"eulerguard/pkg/utils"
+	"aegis/pkg/events"
+	"aegis/pkg/types"
+	"aegis/pkg/utils"
 
 	"gopkg.in/yaml.v3"
 )
@@ -58,9 +58,9 @@ func (p *Profiler) HandleExec(ev events.ExecEvent) {
 
 	profile := BehaviorProfile{
 		Type:     events.EventTypeExec,
-		Process:  utils.ExtractCString(ev.Comm[:]),
+		Process:  utils.ExtractCString(ev.Hdr.Comm[:]),
 		Parent:   utils.ExtractCString(ev.PComm[:]),
-		CgroupID: ev.CgroupID,
+		CgroupID: ev.Hdr.CgroupID,
 	}
 
 	p.profiles[profile] = struct{}{}
@@ -77,7 +77,7 @@ func (p *Profiler) HandleFileOpen(ev events.FileOpenEvent, filename string) {
 	profile := BehaviorProfile{
 		Type:     events.EventTypeFileOpen,
 		File:     utils.SimplifyPath(filename),
-		CgroupID: ev.CgroupID,
+		CgroupID: ev.Hdr.CgroupID,
 	}
 
 	p.profiles[profile] = struct{}{}
@@ -94,7 +94,7 @@ func (p *Profiler) HandleConnect(ev events.ConnectEvent) {
 	profile := BehaviorProfile{
 		Type:     events.EventTypeConnect,
 		Port:     ev.Port,
-		CgroupID: ev.CgroupID,
+		CgroupID: ev.Hdr.CgroupID,
 	}
 
 	p.profiles[profile] = struct{}{}

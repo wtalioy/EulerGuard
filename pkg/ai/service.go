@@ -6,22 +6,17 @@ import (
 	"log"
 	"time"
 
-	"eulerguard/pkg/config"
-	"eulerguard/pkg/types"
-	"eulerguard/pkg/workload"
+	"aegis/pkg/config"
+	"aegis/pkg/types"
+	"aegis/pkg/workload"
 )
 
 type Service struct {
 	provider      Provider
 	conversations *ConversationStore
-	enabled       bool
 }
 
 func NewService(opts config.AIOptions) (*Service, error) {
-	if !opts.Enabled {
-		return &Service{enabled: false}, nil
-	}
-
 	var provider Provider
 
 	switch opts.Mode {
@@ -44,21 +39,19 @@ func NewService(opts config.AIOptions) (*Service, error) {
 	return &Service{
 		provider:      provider,
 		conversations: NewConversationStore(),
-		enabled:       true,
 	}, nil
 }
 
 func (s *Service) IsEnabled() bool {
-	return s.enabled && s.provider != nil
+	return s.provider != nil
 }
 
 func (s *Service) GetStatus() StatusDTO {
-	if !s.enabled {
+	if s.provider == nil {
 		return StatusDTO{
-			Enabled:  false,
+			Status:   "unavailable",
 			Provider: "",
 			IsLocal:  false,
-			Status:   "disabled",
 		}
 	}
 
@@ -70,7 +63,6 @@ func (s *Service) GetStatus() StatusDTO {
 	}
 
 	return StatusDTO{
-		Enabled:  true,
 		Provider: s.provider.Name(),
 		IsLocal:  s.provider.IsLocal(),
 		Status:   status,
@@ -83,8 +75,8 @@ func (s *Service) Diagnose(
 	workloadReg *workload.Registry,
 	procTreeSize int,
 ) (*DiagnosisResult, error) {
-	if !s.enabled {
-		return nil, fmt.Errorf("AI diagnosis is not enabled")
+	if s.provider == nil {
+		return nil, fmt.Errorf("AI service is not available")
 	}
 
 	startTime := time.Now()
@@ -118,8 +110,8 @@ func (s *Service) Chat(
 	workloadReg *workload.Registry,
 	procTreeSize int,
 ) (*ChatResponse, error) {
-	if !s.enabled {
-		return nil, fmt.Errorf("AI chat is not enabled")
+	if s.provider == nil {
+		return nil, fmt.Errorf("AI service is not available")
 	}
 
 	startTime := time.Now()
@@ -166,8 +158,8 @@ func (s *Service) ChatStream(
 	workloadReg *workload.Registry,
 	procTreeSize int,
 ) (<-chan ChatStreamToken, error) {
-	if !s.enabled {
-		return nil, fmt.Errorf("AI chat is not enabled")
+	if s.provider == nil {
+		return nil, fmt.Errorf("AI service is not available")
 	}
 
 	s.conversations.GetOrCreate(sessionID)

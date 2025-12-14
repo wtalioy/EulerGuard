@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"eulerguard/pkg/config"
+	"aegis/pkg/config"
 )
 
 type OllamaProvider struct {

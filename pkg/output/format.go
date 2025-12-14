@@ -1,9 +1,9 @@
 package output
 
 import (
-	"eulerguard/pkg/events"
-	"eulerguard/pkg/proc"
-	"eulerguard/pkg/utils"
+	"aegis/pkg/events"
+	"aegis/pkg/proc"
+	"aegis/pkg/utils"
 	"fmt"
 	"strings"
 )

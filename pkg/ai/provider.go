@@ -59,8 +59,7 @@ type ChatResponse struct {
 }
 
 type StatusDTO struct {
-	Enabled  bool   `json:"enabled"`
 	Provider string `json:"provider"`
 	IsLocal  bool   `json:"isLocal"`
-	Status   string `json:"status"` // "ready", "unavailable", "disabled"
+	Status   string `json:"status"` // "ready", "unavailable"
 }

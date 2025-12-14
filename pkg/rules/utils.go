@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"eulerguard/pkg/types"
+	"aegis/pkg/types"
 )
 
 // match a value against a pattern using the specified match type.
@@ -38,6 +38,16 @@ func filterRulesByAction[T any](rules []*types.Rule, matchFn func(*types.Rule, T
 		if !matchFn(r, event) {
 			continue
 		}
+
+		// Testing rules should never block - treat them as alert/monitor only
+		if r.IsTesting() {
+			// Testing rules always act as alert/monitor, regardless of their action
+			if alertRule == nil {
+				alertRule = r
+			}
+			continue
+		}
+
 		switch r.Action {
 		case types.ActionAllow:
 			return true, r, true

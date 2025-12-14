@@ -33,6 +33,10 @@ type Options struct {
 	LearnMode     bool          `yaml:"learn_mode"`
 	LearnDuration time.Duration `yaml:"learn_duration"`
 
+	// Rule promotion configuration
+	PromotionMinObservationMinutes int `yaml:"promotion_min_observation_minutes"`
+	PromotionMinHits               int `yaml:"promotion_min_hits"`
+
 	WebMode bool `yaml:"-"`
 	WebPort int  `yaml:"-"`
 
@@ -41,10 +45,9 @@ type Options struct {
 }
 
 type AIOptions struct {
-	Enabled bool          `yaml:"enabled"`
-	Mode    string        `yaml:"mode"` // "ollama" or "openai"
-	Ollama  OllamaOptions `yaml:"ollama"`
-	OpenAI  OpenAIOptions `yaml:"openai"`
+	Mode   string        `yaml:"mode"` // "ollama" or "openai"
+	Ollama OllamaOptions `yaml:"ollama"`
+	OpenAI OpenAIOptions `yaml:"openai"`
 }
 
 type OllamaOptions struct {
@@ -69,16 +72,18 @@ func ParseOptions() Options {
 	configPath := filepath.Join(cwd, "config.yaml")
 
 	opts := Options{
-		BPFPath:                   filepath.Join(cwd, "bpf", "main.bpf.o"),
-		RulesPath:                 filepath.Join(cwd, "rules.yaml"),
-		LogFile:                   filepath.Join(cwd, "eulerguard.log"),
-		ProcessTreeMaxAge:         DefaultProcessTreeMaxAge,
-		ProcessTreeMaxSize:        DefaultProcessTreeMaxSize,
-		ProcessTreeMaxChainLength: DefaultProcessTreeMaxChainLength,
-		LogBufferSize:             DefaultLogBufferSize,
-		RingBufferSize:            DefaultRingBufferSize,
-		LearnMode:     false,
-		LearnDuration: DefaultLearnDuration,
+		BPFPath:                        filepath.Join(cwd, "bpf", "main.bpf.o"),
+		RulesPath:                      filepath.Join(cwd, "rules.yaml"),
+		LogFile:                        filepath.Join(cwd, "runtime.log"),
+		ProcessTreeMaxAge:              DefaultProcessTreeMaxAge,
+		ProcessTreeMaxSize:             DefaultProcessTreeMaxSize,
+		ProcessTreeMaxChainLength:      DefaultProcessTreeMaxChainLength,
+		LogBufferSize:                  DefaultLogBufferSize,
+		RingBufferSize:                 DefaultRingBufferSize,
+		LearnMode:                      false,
+		LearnDuration:                  DefaultLearnDuration,
+		PromotionMinObservationMinutes: 1440, // 24 hours
+		PromotionMinHits:               100,
 	}
 
 	data, err := os.ReadFile(configPath)
@@ -136,11 +141,16 @@ func ParseOptions() Options {
 		}
 	}
 
+	// Rule promotion configuration
+	if v, ok := raw["promotion_min_observation_minutes"].(int); ok && v > 0 {
+		opts.PromotionMinObservationMinutes = v
+	}
+	if v, ok := raw["promotion_min_hits"].(int); ok && v > 0 {
+		opts.PromotionMinHits = v
+	}
+
 	// AI configuration
 	if aiRaw, ok := raw["ai"].(map[string]interface{}); ok {
-		if v, ok := aiRaw["enabled"].(bool); ok {
-			opts.AI.Enabled = v
-		}
 		if v, ok := aiRaw["mode"].(string); ok {
 			opts.AI.Mode = v
 		}

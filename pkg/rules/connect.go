@@ -1,9 +1,9 @@
 package rules
 
 import (
-	"eulerguard/pkg/events"
-	"eulerguard/pkg/types"
-	"eulerguard/pkg/utils"
+	"aegis/pkg/events"
+	"aegis/pkg/types"
+	"aegis/pkg/utils"
 )
 
 type connectMatcher struct {
@@ -37,5 +37,5 @@ func (m *connectMatcher) matchRule(rule *types.Rule, event *events.ConnectEvent)
 			return false
 		}
 	}
-	return matchCgroupID(match.CgroupID, event.CgroupID) && matchPID(match.PID, event.PID)
+	return matchCgroupID(match.CgroupID, event.Hdr.CgroupID) && matchPID(match.PID, event.Hdr.PID)
 }

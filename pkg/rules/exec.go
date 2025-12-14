@@ -1,8 +1,8 @@
 package rules
 
 import (
-	"eulerguard/pkg/events"
-	"eulerguard/pkg/types"
+	"aegis/pkg/events"
+	"aegis/pkg/types"
 )
 
 type execMatcher struct {
@@ -103,7 +103,7 @@ func (m *execMatcher) matchRule(rule *types.Rule, event events.ProcessedEvent) b
 	match := rule.Match
 	return (match.ProcessName == "" || matchString(event.Process, match.ProcessName, match.ProcessNameType)) &&
 		(match.ParentName == "" || matchString(event.Parent, match.ParentName, match.ParentNameType)) &&
-		matchPID(match.PID, event.Event.PID) &&
+		matchPID(match.PID, event.Event.Hdr.PID) &&
 		(match.PPID == 0 || event.Event.PPID == match.PPID) &&
-		matchCgroupID(match.CgroupID, event.Event.CgroupID)
+		matchCgroupID(match.CgroupID, event.Event.Hdr.CgroupID)
 }

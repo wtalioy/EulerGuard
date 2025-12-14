@@ -7,21 +7,22 @@ import (
 	"os"
 	"time"
 
-	"eulerguard/pkg/config"
-	"eulerguard/pkg/events"
-	"eulerguard/pkg/metrics"
-	"eulerguard/pkg/output"
-	"eulerguard/pkg/profiler"
-	"eulerguard/pkg/rules"
-	"eulerguard/pkg/tracer"
-	"eulerguard/pkg/types"
+	"aegis/pkg/config"
+	"aegis/pkg/core"
+	"aegis/pkg/events"
+	"aegis/pkg/metrics"
+	"aegis/pkg/output"
+	"aegis/pkg/profiler"
+	"aegis/pkg/rules"
+	"aegis/pkg/tracer"
+	"aegis/pkg/types"
 )
 
 type CLI struct {
 	Opts     config.Options
 	Handlers *events.HandlerChain
 	Profiler *profiler.Profiler
-	Core     *tracer.Core
+	Core     *core.CoreComponents
 }
 
 func RunCLI(opts config.Options, ctx context.Context) error {
@@ -34,12 +35,12 @@ func RunCLI(opts config.Options, ctx context.Context) error {
 		return fmt.Errorf("must run as root (current euid=%d)", os.Geteuid())
 	}
 
-	core, err := tracer.Init(cli.Opts)
+	components, err := core.Bootstrap(cli.Opts)
 	if err != nil {
 		return err
 	}
-	defer core.Close()
-	cli.Core = core
+	defer components.Close()
+	cli.Core = components
 
 	if cli.Opts.LearnMode {
 		cli.Profiler = profiler.NewProfiler()
@@ -55,9 +56,9 @@ func RunCLI(opts config.Options, ctx context.Context) error {
 	defer printer.Close()
 
 	cli.Handlers.Add(&cliAlertHandler{
-		processTree: core.ProcessTree,
+		processTree: components.ProcessTree,
 		printer:     printer,
-		ruleEngine:  core.RuleEngine,
+		ruleEngine:  components.RuleEngine,
 	})
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -73,12 +74,12 @@ func RunCLI(opts config.Options, ctx context.Context) error {
 	}()
 
 	if cli.Opts.LearnMode {
-		log.Printf("EulerGuard learning mode started (BPF: %s)", cli.Opts.BPFPath)
+		log.Printf("Aegis learning mode started (BPF: %s)", cli.Opts.BPFPath)
 	} else {
-		log.Printf("EulerGuard tracer ready (BPF: %s, rules: %s)", cli.Opts.BPFPath, cli.Opts.RulesPath)
+		log.Printf("Aegis tracer ready (BPF: %s, rules: %s)", cli.Opts.BPFPath, cli.Opts.RulesPath)
 	}
 
-	return tracer.EventLoop(cli.Core.Reader, cli.Handlers, cli.Core.ProcessTree, cli.Core.WorkloadRegistry)
+	return tracer.EventLoop(cli.Core.Reader, cli.Handlers, cli.Core.ProcessTree, cli.Core.WorkloadReg, cli.Core.Storage, cli.Core.ProfileReg)
 }
 
 func (cli *CLI) runLearnModeTimer(ctx context.Context, cancel context.CancelFunc) {

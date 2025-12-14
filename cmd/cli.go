@@ -9,8 +9,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"eulerguard/pkg/cli"
-	"eulerguard/pkg/config"
+	"aegis/pkg/cli"
+	"aegis/pkg/config"
 )
 
 func main() {
@@ -18,6 +18,6 @@ func main() {
 	defer stop()
 
 	if err := cli.RunCLI(config.ParseOptions(), ctx); err != nil {
-		log.Fatalf("eulerguard: %v", err)
+		log.Fatalf("aegis: %v", err)
 	}
 }

@@ -6,8 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
-	"eulerguard/pkg/types"
+	"aegis/pkg/types"
 
 	"gopkg.in/yaml.v3"
 )
@@ -47,9 +48,30 @@ func LoadRules(filePath string) ([]types.Rule, error) {
 	return ruleSet.Rules, nil
 }
 
+// CleanRuleForYAML creates a copy of a rule without metadata fields for YAML serialization
+func CleanRuleForYAML(rule types.Rule) types.Rule {
+	clean := rule
+	// Clear metadata fields that shouldn't be in YAML
+	clean.CreatedAt = time.Time{}
+	clean.DeployedAt = nil
+	clean.PromotedAt = nil
+	clean.ActualTestingHits = 0
+	clean.PromotionScore = 0
+	clean.PromotionReasons = nil
+	clean.LastReviewedAt = nil
+	clean.ReviewNotes = ""
+	return clean
+}
+
 func SaveRules(filePath string, ruleList []types.Rule) error {
+	// Clean rules before saving (remove metadata fields)
+	cleanRules := make([]types.Rule, len(ruleList))
+	for i, rule := range ruleList {
+		cleanRules[i] = CleanRuleForYAML(rule)
+	}
+	
 	ruleSet := types.RuleSet{
-		Rules: ruleList,
+		Rules: cleanRules,
 	}
 
 	dir := filepath.Dir(filePath)

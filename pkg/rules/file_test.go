@@ -6,7 +6,7 @@ import (
 	"syscall"
 	"testing"
 
-	"eulerguard/pkg/types"
+	"aegis/pkg/types"
 )
 
 func TestInodeMatchingWithHardlink(t *testing.T) {

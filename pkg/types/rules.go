@@ -6,9 +6,10 @@ import (
 	"os"
 	"strings"
 	"syscall"
+	"time"
 
-	"eulerguard/pkg/events"
-	"eulerguard/pkg/utils"
+	"aegis/pkg/events"
+	"aegis/pkg/utils"
 )
 
 type MatchType string
@@ -20,6 +21,23 @@ const (
 	ActionAlert ActionType = "alert"
 	ActionBlock ActionType = "block"
 )
+
+// Helper functions for rule state checks
+func (r *Rule) IsTesting() bool {
+	return r.State == RuleStateTesting
+}
+
+func (r *Rule) IsProduction() bool {
+	return r.State == RuleStateProduction
+}
+
+func (r *Rule) IsDraft() bool {
+	return r.State == RuleStateDraft || r.State == ""
+}
+
+func (r *Rule) IsActive() bool {
+	return r.State == RuleStateTesting || r.State == RuleStateProduction
+}
 
 const (
 	BPFActionMonitor uint8 = 1
@@ -45,18 +63,47 @@ type InodeKey struct {
 	Dev uint64
 }
 
+// RuleState represents the lifecycle state of a rule
+type RuleState string
+
+const (
+	RuleStateDraft      RuleState = "draft"      // Created but not deployed
+	RuleStateTesting    RuleState = "testing"    // Deployed in testing mode
+	RuleStateProduction RuleState = "production" // Deployed in production
+	RuleStateArchived   RuleState = "archived"   // Disabled/removed
+)
+
 type Rule struct {
-	Name        string         `yaml:"name"`
-	Description string         `yaml:"description"`
-	Severity    string         `yaml:"severity"`
-	Match       MatchCondition `yaml:"match"`
-	Action      ActionType     `yaml:"action"`
-	Type        RuleType       `yaml:"type,omitempty"`
+	Name        string         `json:"name" yaml:"name"`
+	Description string         `json:"description" yaml:"description"`
+	Severity    string         `json:"severity" yaml:"severity"`
+	Match       MatchCondition `json:"match" yaml:"match"`
+	Action      ActionType     `json:"action" yaml:"action"`
+	Type        RuleType       `json:"type,omitempty" yaml:"type,omitempty"`
+
+	// Lifecycle state
+	State      RuleState  `json:"state" yaml:"state,omitempty"`
+	CreatedAt  time.Time  `json:"created_at" yaml:"-"`
+	DeployedAt *time.Time `json:"deployed_at,omitempty" yaml:"-"`
+	PromotedAt *time.Time `json:"promoted_at,omitempty" yaml:"-"`
+
+	// NEW: Validation metrics
+	ActualTestingHits int      `json:"actual_testing_hits,omitempty" yaml:"-"`
+	PromotionScore    float64  `json:"promotion_score,omitempty" yaml:"-"` // 0-1
+	PromotionReasons  []string `json:"promotion_reasons,omitempty" yaml:"-"`
+
+	// NEW: Metadata
+	LastReviewedAt *time.Time `json:"last_reviewed_at,omitempty" yaml:"-"`
+	ReviewNotes    string     `json:"review_notes,omitempty" yaml:"-"`
 }
 
 func (r *Rule) DeriveType() RuleType {
 	if r.Type != "" {
 		return r.Type
+	}
+	// Check filename first (before path keys which require Prepare())
+	if r.Match.Filename != "" {
+		return RuleTypeFile
 	}
 	if len(r.Match.ExactPathKeys()) > 0 || len(r.Match.PrefixPathKeys()) > 0 {
 		return RuleTypeFile

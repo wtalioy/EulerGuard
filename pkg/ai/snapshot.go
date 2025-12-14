@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"eulerguard/pkg/types"
-	"eulerguard/pkg/workload"
+	"aegis/pkg/types"
+	"aegis/pkg/workload"
 )
 
 const (
@@ -61,9 +61,12 @@ func BuildSnapshot(stats types.StatsProvider, workloadReg *workload.Registry, pr
 	}
 
 	snapshot.RecentAlerts = deduplicateAlerts(stats.Alerts())
-	snapshot.RecentProcesses = buildProcessActivity(stats.RecentExecs())
-	snapshot.RecentConnections = buildConnectionActivity(stats.RecentConnects())
-	snapshot.RecentFileAccess = buildFileActivity(stats.RecentFiles())
+	// RecentProcesses, RecentConnections, RecentFileAccess will be populated
+	// in Phase 1 when TimeRingBuffer is implemented.
+	// For now, return empty slices.
+	snapshot.RecentProcesses = []types.ProcessActivity{}
+	snapshot.RecentConnections = []types.ConnectionActivity{}
+	snapshot.RecentFileAccess = []types.FileActivity{}
 
 	return snapshot
 }

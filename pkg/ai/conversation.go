@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"eulerguard/pkg/types"
+	"aegis/pkg/types"
 )
 
 type Conversation struct {

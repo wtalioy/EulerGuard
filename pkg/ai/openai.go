@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"eulerguard/pkg/config"
+	"aegis/pkg/config"
 )
 
 type OpenAIProvider struct {
@@ -25,7 +25,7 @@ type OpenAIProvider struct {
 func NewOpenAIProvider(opts config.OpenAIOptions) *OpenAIProvider {
 	apiKey := opts.APIKey
 	if apiKey == "" {
-		apiKey = os.Getenv("EULERGUARD_AI_API_KEY")
+		apiKey = os.Getenv("AEGIS_AI_API_KEY")
 	}
 
 	return &OpenAIProvider{

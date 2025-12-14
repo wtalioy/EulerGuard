@@ -1,14 +1,15 @@
 package types
 
 type ExecEvent struct {
-	Type       string `json:"type"`
-	Timestamp  int64  `json:"timestamp"`
-	PID        uint32 `json:"pid"`
-	PPID       uint32 `json:"ppid"`
-	CgroupID   string `json:"cgroupId"`
-	Comm       string `json:"comm"`
-	ParentComm string `json:"parentComm"`
-	Blocked    bool   `json:"blocked"`
+	Type        string `json:"type"`
+	Timestamp   int64  `json:"timestamp"`
+	PID         uint32 `json:"pid"`
+	PPID        uint32 `json:"ppid"`
+	CgroupID    string `json:"cgroupId"`
+	Comm        string `json:"comm"`
+	ParentComm  string `json:"parentComm"`
+	CommandLine string `json:"commandLine,omitempty"`
+	Blocked     bool   `json:"blocked"`
 }
 
 type FileEvent struct {

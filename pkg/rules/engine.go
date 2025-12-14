@@ -1,8 +1,8 @@
 package rules
 
 import (
-	"eulerguard/pkg/events"
-	"eulerguard/pkg/types"
+	"aegis/pkg/events"
+	"aegis/pkg/types"
 )
 
 type Engine struct {
@@ -10,17 +10,27 @@ type Engine struct {
 	execMatcher    *execMatcher
 	fileMatcher    *fileMatcher
 	connectMatcher *connectMatcher
+	testingBuffer  *TestingBuffer
 }
 
 func NewEngine(rules []types.Rule) *Engine {
+	// Separate active rules (testing/production) from draft rules
+	// Draft rules should not be included in matchers
+	var activeRules []types.Rule
 	for i := range rules {
 		rules[i].Match.Prepare()
+		// Only include rules that are active (testing or production)
+		// Draft rules and empty state rules are excluded from matching
+		if rules[i].IsActive() {
+			activeRules = append(activeRules, rules[i])
+		}
 	}
 	return &Engine{
-		rules:          rules,
-		execMatcher:    newExecMatcher(rules),
-		fileMatcher:    newFileMatcher(rules),
-		connectMatcher: newConnectMatcher(rules),
+		rules:          rules, // Keep all rules for GetRules(), but only active ones in matchers
+		execMatcher:    newExecMatcher(activeRules),
+		fileMatcher:    newFileMatcher(activeRules),
+		connectMatcher: newConnectMatcher(activeRules),
+		testingBuffer:  NewTestingBuffer(10000),
 	}
 }
 
@@ -54,4 +64,9 @@ func (e *Engine) MatchConnect(event *events.ConnectEvent) (matched bool, rule *t
 
 func (e *Engine) GetRules() []types.Rule {
 	return e.rules
+}
+
+// GetTestingBuffer returns the testing buffer.
+func (e *Engine) GetTestingBuffer() *TestingBuffer {
+	return e.testingBuffer
 }

@@ -1,10 +1,10 @@
 package cli
 
 import (
-	"eulerguard/pkg/events"
-	"eulerguard/pkg/output"
-	"eulerguard/pkg/proc"
-	"eulerguard/pkg/rules"
+	"aegis/pkg/events"
+	"aegis/pkg/output"
+	"aegis/pkg/proc"
+	"aegis/pkg/rules"
 )
 
 type cliAlertHandler struct {
@@ -26,11 +26,11 @@ func (h *cliAlertHandler) HandleExec(ev events.ExecEvent) {
 }
 
 func (h *cliAlertHandler) HandleFileOpen(ev events.FileOpenEvent, filename string) {
-	matched, rule, allowed := h.ruleEngine.MatchFile(ev.Ino, ev.Dev, filename, ev.PID, ev.CgroupID)
+	matched, rule, allowed := h.ruleEngine.MatchFile(ev.Ino, ev.Dev, filename, ev.Hdr.PID, ev.Hdr.CgroupID)
 	if !matched || rule == nil || allowed {
 		return
 	}
-	h.printer.PrintFileOpenAlert(&ev, h.processTree.GetAncestors(ev.PID), rule, filename)
+	h.printer.PrintFileOpenAlert(&ev, h.processTree.GetAncestors(ev.Hdr.PID), rule, filename)
 }
 
 func (h *cliAlertHandler) HandleConnect(ev events.ConnectEvent) {
@@ -38,5 +38,5 @@ func (h *cliAlertHandler) HandleConnect(ev events.ConnectEvent) {
 	if !matched || rule == nil || allowed {
 		return
 	}
-	h.printer.PrintConnectAlert(&ev, h.processTree.GetAncestors(ev.PID), rule)
+	h.printer.PrintConnectAlert(&ev, h.processTree.GetAncestors(ev.Hdr.PID), rule)
 }

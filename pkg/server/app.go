@@ -8,7 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"aegis/pkg/ai"
+	"aegis/pkg/ai/sentinel"
+	"aegis/pkg/ai/service"
 	"aegis/pkg/ai/types"
 	"aegis/pkg/config"
 	"aegis/pkg/core"
@@ -27,8 +28,8 @@ type App struct {
 	stats  *Stats
 	bridge *Bridge
 
-	aiService *ai.Service
-	sentinel  *ai.Sentinel
+	aiService *service.Service
+	sentinel  *sentinel.Sentinel
 
 	ready       chan struct{}
 	stopWatcher chan struct{}
@@ -39,9 +40,9 @@ type App struct {
 func NewApp(opts config.Options) *App {
 	stats := NewServerStats(100, 10*time.Second)
 
-	var aiService *ai.Service
+	var aiService *service.Service
 	var err error
-	aiService, err = ai.NewService(opts.AI)
+	aiService, err = service.NewService(opts.AI)
 	if err != nil {
 		log.Printf("[AI] Failed to initialize: %v", err)
 	}
@@ -62,7 +63,7 @@ func (a *App) Startup(ctx context.Context) {
 }
 
 func (a *App) WaitForReady() { <-a.ready }
-func (a *App) SetReady() { close(a.ready) }
+func (a *App) SetReady()     { close(a.ready) }
 
 func (a *App) Shutdown(ctx context.Context) {
 	if a.sentinel != nil {
@@ -71,12 +72,12 @@ func (a *App) Shutdown(ctx context.Context) {
 	close(a.stopWatcher)
 }
 
-func (a *App) Bridge() *Bridge        { return a.bridge }
-func (a *App) Stats() *Stats          { return a.stats }
-func (a *App) AIService() *ai.Service { return a.aiService }
-func (a *App) Sentinel() *ai.Sentinel { return a.sentinel }
-func (a *App) Options() *config.Options { return &a.opts }
-func (a *App) Core() *core.CoreComponents { return a.core }
+func (a *App) Bridge() *Bridge              { return a.bridge }
+func (a *App) Stats() *Stats                { return a.stats }
+func (a *App) AIService() *service.Service  { return a.aiService }
+func (a *App) Sentinel() *sentinel.Sentinel { return a.sentinel }
+func (a *App) Options() *config.Options     { return &a.opts }
+func (a *App) Core() *core.CoreComponents   { return a.core }
 
 func (a *App) Diagnose(ctx context.Context) (*types.DiagnosisResult, error) {
 	if a.aiService == nil || !a.aiService.IsEnabled() {
@@ -208,7 +209,7 @@ func (a *App) Run() error {
 
 	// Initialize Sentinel if AI service is available
 	if a.aiService != nil {
-		sentinel := ai.NewSentinel(
+		s := sentinel.NewSentinel(
 			a.aiService,
 			components.RuleEngine,
 			components.Storage,
@@ -216,7 +217,7 @@ func (a *App) Run() error {
 		)
 
 		// Optional Sentinel schedule overrides from config.
-		cfg := ai.SentinelScheduleConfig{}
+		cfg := sentinel.ScheduleConfig{}
 		if d, err := time.ParseDuration(a.opts.AI.SentinelTestingPromotion); err == nil && d > 0 {
 			cfg.TestingPromotion = d
 		}
@@ -229,7 +230,7 @@ func (a *App) Run() error {
 		if d, err := time.ParseDuration(a.opts.AI.SentinelDailyReport); err == nil && d > 0 {
 			cfg.DailyReport = d
 		}
-		a.sentinel = sentinel.WithSchedule(cfg)
+		a.sentinel = s.WithSchedule(cfg)
 		a.sentinel.Start()
 		log.Println("[Sentinel] AI Sentinel started")
 	}

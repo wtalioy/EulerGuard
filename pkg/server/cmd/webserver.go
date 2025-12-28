@@ -11,7 +11,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"aegis/pkg/ai"
+	"aegis/pkg/ai/runtime"
 	"aegis/pkg/config"
 	"aegis/pkg/server"
 	"aegis/pkg/server/handlers"
@@ -45,7 +45,7 @@ func RunWebServer(opts config.Options, port int, assets embed.FS) error {
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 		<-sigChan
 		log.Println("Shutting down...")
-		ai.StopOllamaRuntime()
+		runtime.StopOllamaRuntime()
 		server.Shutdown(context.Background())
 	}()
 

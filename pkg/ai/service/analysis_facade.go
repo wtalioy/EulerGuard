@@ -1,4 +1,4 @@
-package ai
+package service
 
 import (
 	"context"
@@ -60,4 +60,3 @@ func (s *Service) ExplainEvent(
 func (s *Service) GenerateRule(ctx context.Context, req *types.RuleGenRequest, ruleEngine *rules.Engine, store storage.EventStore) (*types.RuleGenResponse, error) {
 	return analysis.GenerateRule(ctx, s.provider, req, ruleEngine, store)
 }
-

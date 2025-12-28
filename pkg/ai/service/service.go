@@ -1,4 +1,4 @@
-package ai
+package service
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"aegis/pkg/ai/chat"
 	"aegis/pkg/ai/diagnostics"
 	"aegis/pkg/ai/providers"
-	"aegis/pkg/ai/snapshot"
 	"aegis/pkg/ai/types"
 	"aegis/pkg/config"
 	"aegis/pkg/metrics"
@@ -19,11 +18,11 @@ import (
 )
 
 type Service struct {
-	provider      Provider
+	provider      providers.Provider
 	conversations *chat.Store
 }
 
-func NewClient(p Provider) *Service {
+func NewClient(p providers.Provider) *Service {
 	return &Service{
 		provider:      p,
 		conversations: chat.NewStore(),
@@ -31,7 +30,7 @@ func NewClient(p Provider) *Service {
 }
 
 func NewService(opts config.AIOptions) (*Service, error) {
-	var provider Provider
+	var provider providers.Provider
 
 	switch opts.Mode {
 	case "ollama":
@@ -58,31 +57,28 @@ func (s *Service) IsEnabled() bool {
 }
 
 func (s *Service) SingleChat(ctx context.Context, prompt string) (string, error) {
-	if s.provider == nil {
-		return "", fmt.Errorf("AI service is not available")
+	if _, err := s.requireProvider(); err != nil {
+		return "", err
 	}
 	return s.provider.SingleChat(ctx, prompt)
 }
 
 func (s *Service) GetStatus() types.StatusDTO {
-	if s.provider == nil {
-		return types.StatusDTO{
-			Status:   "unavailable",
-			Provider: "",
-			IsLocal:  false,
-		}
+	provider, err := s.requireProvider()
+	if err != nil {
+		return types.StatusDTO{Status: "unavailable"}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	status := "ready"
-	if err := s.provider.CheckHealth(ctx); err != nil {
+	if err := provider.CheckHealth(ctx); err != nil {
 		status = "unavailable"
 	}
 
 	return types.StatusDTO{
-		Provider: s.provider.Name(),
-		IsLocal:  s.provider.IsLocal(),
+		Provider: provider.Name(),
+		IsLocal:  provider.IsLocal(),
 		Status:   status,
 	}
 }
@@ -94,19 +90,20 @@ func (s *Service) Diagnose(
 	store storage.EventStore,
 	processTree *proc.ProcessTree,
 ) (*types.DiagnosisResult, error) {
-	if s.provider == nil {
-		return nil, fmt.Errorf("AI service is not available")
+	provider, err := s.requireProvider()
+	if err != nil {
+		return nil, err
 	}
 
 	startTime := time.Now()
 
-	result := snapshot.NewSnapshot(statsProvider, workloadReg, store, processTree).Build()
+	result := s.buildSnapshot(statsProvider, workloadReg, store, processTree)
 	promptText, err := diagnostics.BuildPrompt(result.State)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate prompt: %w", err)
 	}
 
-	response, err := s.provider.SingleChat(ctx, promptText)
+	response, err := provider.SingleChat(ctx, promptText)
 	if err != nil {
 		return nil, fmt.Errorf("AI inference failed: %w", err)
 	}
@@ -114,10 +111,10 @@ func (s *Service) Diagnose(
 	return &types.DiagnosisResult{
 		Analysis:        response,
 		SnapshotSummary: diagnostics.SnapshotSummary(result.State),
-		Provider:        s.provider.Name(),
-		IsLocal:         s.provider.IsLocal(),
+		Provider:        provider.Name(),
+		IsLocal:         provider.IsLocal(),
 		DurationMs:      time.Since(startTime).Milliseconds(),
-		Timestamp:       time.Now().UnixMilli(),
+		Timestamp:       nowMs(),
 	}, nil
 }
 
@@ -130,8 +127,9 @@ func (s *Service) Chat(
 	store storage.EventStore,
 	processTree *proc.ProcessTree,
 ) (*types.ChatResponse, error) {
-	if s.provider == nil {
-		return nil, fmt.Errorf("AI service is not available")
+	provider, err := s.requireProvider()
+	if err != nil {
+		return nil, err
 	}
 
 	startTime := time.Now()
@@ -139,31 +137,23 @@ func (s *Service) Chat(
 	conv := s.conversations.GetOrCreate(sessionID)
 	history := s.conversations.GetMessages(sessionID)
 
-	result := snapshot.NewSnapshot(statsProvider, workloadReg, store, processTree).Build()
+	result := s.buildSnapshot(statsProvider, workloadReg, store, processTree)
 	messages := chat.BuildMessages(history, result.State, userMessage, processTree, result.ProcessKeyToChain, result.ProcessNameToChain)
 
-	response, err := s.provider.MultiChat(ctx, messages)
+	response, err := provider.MultiChat(ctx, messages)
 	if err != nil {
 		return nil, fmt.Errorf("AI chat failed: %w", err)
 	}
 
-	s.conversations.AddMessage(sessionID, types.Message{
-		Role:      "user",
-		Content:   userMessage,
-		Timestamp: time.Now().UnixMilli(),
-	})
-	s.conversations.AddMessage(sessionID, types.Message{
-		Role:      "assistant",
-		Content:   response,
-		Timestamp: time.Now().UnixMilli(),
-	})
+	ts := nowMs()
+	s.appendUserAndAssistant(sessionID, userMessage, response, ts)
 
 	return &types.ChatResponse{
 		Message:        response,
 		SessionID:      sessionID,
 		ContextSummary: diagnostics.SnapshotSummary(result.State),
-		Provider:       s.provider.Name(),
-		IsLocal:        s.provider.IsLocal(),
+		Provider:       provider.Name(),
+		IsLocal:        provider.IsLocal(),
 		DurationMs:     time.Since(startTime).Milliseconds(),
 		Timestamp:      time.Now().UnixMilli(),
 		MessageCount:   len(conv.Messages),
@@ -179,17 +169,18 @@ func (s *Service) ChatStream(
 	store storage.EventStore,
 	processTree *proc.ProcessTree,
 ) (<-chan types.ChatStreamToken, error) {
-	if s.provider == nil {
-		return nil, fmt.Errorf("AI service is not available")
+	provider, err := s.requireProvider()
+	if err != nil {
+		return nil, err
 	}
 
 	s.conversations.GetOrCreate(sessionID)
 	history := s.conversations.GetMessages(sessionID)
 
-	result := snapshot.NewSnapshot(statsProvider, workloadReg, store, processTree).Build()
+	result := s.buildSnapshot(statsProvider, workloadReg, store, processTree)
 	messages := chat.BuildMessages(history, result.State, userMessage, processTree, result.ProcessKeyToChain, result.ProcessNameToChain)
 
-	tokenChan, err := s.provider.MultiChatStream(ctx, messages)
+	tokenChan, err := provider.MultiChatStream(ctx, messages)
 	if err != nil {
 		return nil, fmt.Errorf("AI stream failed: %w", err)
 	}
@@ -216,16 +207,8 @@ func (s *Service) ChatStream(
 			}
 
 			if token.Done {
-				s.conversations.AddMessage(sessionID, types.Message{
-					Role:      "user",
-					Content:   userMessage,
-					Timestamp: time.Now().UnixMilli(),
-				})
-				s.conversations.AddMessage(sessionID, types.Message{
-					Role:      "assistant",
-					Content:   fullResponse,
-					Timestamp: time.Now().UnixMilli(),
-				})
+				ts := nowMs()
+				s.appendUserAndAssistant(sessionID, userMessage, fullResponse, ts)
 			}
 		}
 	}()

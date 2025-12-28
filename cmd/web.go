@@ -9,7 +9,7 @@ import (
 	"log"
 	"time"
 
-	"aegis/pkg/ai"
+	"aegis/pkg/ai/runtime"
 	"aegis/pkg/config"
 	"aegis/pkg/server/cmd"
 )
@@ -34,7 +34,7 @@ func prewarmAIRuntime(opts config.Options) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
-	if err := ai.EnsureOllamaRuntime(ctx, opts.AI.Ollama.Model, opts.AI.Ollama.Endpoint); err != nil {
+	if err := runtime.EnsureOllamaRuntime(ctx, opts.AI.Ollama.Model, opts.AI.Ollama.Endpoint); err != nil {
 		log.Printf("[AI] Warning: failed to ensure Ollama runtime: %v", err)
 	}
 }

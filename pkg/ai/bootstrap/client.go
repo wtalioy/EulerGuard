@@ -3,12 +3,12 @@ package bootstrap
 import (
 	"fmt"
 
-	"aegis/pkg/ai"
 	"aegis/pkg/ai/providers"
+	"aegis/pkg/ai/service"
 	"aegis/pkg/config"
 )
 
-func NewClientFromConfig(opts config.AIOptions) (*ai.Service, error) {
+func NewClientFromConfig(opts config.AIOptions) (*service.Service, error) {
 	var provider providers.Provider
 
 	switch opts.Mode {
@@ -20,6 +20,5 @@ func NewClientFromConfig(opts config.AIOptions) (*ai.Service, error) {
 		return nil, fmt.Errorf("unknown AI mode: %s", opts.Mode)
 	}
 
-	return ai.NewClient(provider), nil
+	return service.NewClient(provider), nil
 }
-

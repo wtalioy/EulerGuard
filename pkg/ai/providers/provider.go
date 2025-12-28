@@ -6,27 +6,20 @@ import (
 	"aegis/pkg/ai/types"
 )
 
-type Provider interface {
-	Name() string
-
-	IsLocal() bool
-
-	// SingleChat handles a single-turn prompt/response interaction.
-	SingleChat(ctx context.Context, prompt string) (string, error)
-
-	// MultiChat handles multi-turn conversations using a sequence of messages.
-	MultiChat(ctx context.Context, messages []types.Message) (string, error)
-
-	// MultiChatStream handles streaming multi-turn conversations.
-	MultiChatStream(ctx context.Context, messages []types.Message) (<-chan StreamToken, error)
-
-	CheckHealth(ctx context.Context) error
-}
-
+// StreamToken is a single streamed output token from a provider.
 type StreamToken struct {
 	Content string
 	Done    bool
 	Error   error
 }
 
+// Provider defines the interface for AI model backends (Ollama, OpenAI, etc).
+type Provider interface {
+	Name() string
+	IsLocal() bool
+	CheckHealth(ctx context.Context) error
 
+	SingleChat(ctx context.Context, prompt string) (string, error)
+	MultiChat(ctx context.Context, messages []types.Message) (string, error)
+	MultiChatStream(ctx context.Context, messages []types.Message) (<-chan StreamToken, error)
+}

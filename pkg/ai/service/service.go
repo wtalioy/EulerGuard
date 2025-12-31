@@ -2,9 +2,12 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
+
+	"aegis/pkg/apimodel"
 
 	"aegis/pkg/ai/chat"
 	"aegis/pkg/ai/diagnostics"
@@ -227,4 +230,37 @@ func (s *Service) ClearChat(sessionID string) {
 	if s.conversations != nil {
 		s.conversations.Clear(sessionID)
 	}
+}
+
+func (s *Service) AskAboutInsight(ctx context.Context, req *apimodel.AskInsightRequest) (*apimodel.AskInsightResponse, error) {
+	provider, err := s.requireProvider()
+	if err != nil {
+		return nil, err
+	}
+
+	// Simple prompt construction for now. A more advanced version could use templates
+	// and fetch related events for even deeper context.
+	insightJSON, err := json.MarshalIndent(req.Insight, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize insight: %w", err)
+	}
+
+	prompt := fmt.Sprintf("As a security analyst AI, answer the user's question about the following security insight.\n\n"+
+		"User Question: %s\n\n"+
+		"Full Insight Context (JSON):\n%s\n\n"+
+		"Provide a direct answer to the question, leveraging all the details in the insight context. "+
+		"Explain your reasoning clearly. If the insight data is insufficient, state what additional information you would need.",
+		req.Question, string(insightJSON))
+
+	response, err := provider.SingleChat(ctx, prompt)
+	if err != nil {
+		return nil, fmt.Errorf("AI inference failed: %w", err)
+	}
+
+	// For now, we'll just wrap the raw response. A more advanced implementation
+	// would have the AI return a structured JSON object with confidence scores.
+	return &apimodel.AskInsightResponse{
+		Answer:     response,
+		Confidence: 0.8, // Placeholder confidence
+	}, nil
 }

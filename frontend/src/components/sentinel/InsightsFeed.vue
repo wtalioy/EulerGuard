@@ -1,12 +1,12 @@
 <!-- Insights Feed Component - Phase 4 -->
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useSentinel, type Insight } from '../../composables/useSentinel'
 import InsightCard from './InsightCard.vue'
-import TestingPromotionCard from './TestingPromotionCard.vue'
-import AnomalyCard from './AnomalyCard.vue'
-import OptimizationCard from './OptimizationCard.vue'
 import DeepAskAI from './DeepAskAI.vue'
+
+const isAskAIModalOpen = ref(false)
+const selectedInsightForAI = ref<Insight | null>(null)
 
 const { insights, loading, error, executeAction } = useSentinel()
 
@@ -32,8 +32,8 @@ const handleAction = (insight: Insight, actionId: string) => {
 }
 
 const handleAskAI = (insight: Insight) => {
-  // Navigate to AI chat with context
-  window.location.href = `/ai?context=insight&id=${insight.id}`
+  selectedInsightForAI.value = insight
+  isAskAIModalOpen.value = true
 }
 </script>
 
@@ -56,51 +56,23 @@ const handleAskAI = (insight: Insight) => {
         <div v-if="group.length > 0" class="insight-group">
           <h3 class="group-title">{{ type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) }}</h3>
           <div class="group-items">
-            <TestingPromotionCard
-              v-if="type === 'shadow_promotion' || type === 'testing_promotion'"
+            <InsightCard
               v-for="insight in group"
               :key="insight.id"
-              :insight="insight as any"
-              @promote="() => handleAction(insight, 'promote')"
-              @dismiss="() => handleAction(insight, 'dismiss')"
+              :insight="insight"
+              @action="(actionId) => handleAction(insight, actionId)"
               @askAI="handleAskAI(insight)"
             />
-            <AnomalyCard
-              v-else-if="type === 'anomaly'"
-              v-for="insight in group"
-              :key="insight.id"
-              :insight="insight as any"
-              @investigate="() => handleAction(insight, 'investigate')"
-              @dismiss="() => handleAction(insight, 'dismiss')"
-              @askAI="handleAskAI(insight)"
-            />
-            <OptimizationCard
-              v-else-if="type === 'optimization'"
-              v-for="insight in group"
-              :key="insight.id"
-              :insight="insight as any"
-              @apply="() => handleAction(insight, 'apply')"
-              @dismiss="() => handleAction(insight, 'dismiss')"
-              @askAI="handleAskAI(insight)"
-            />
-            <div v-else class="insight-with-deep-ask">
-              <InsightCard
-                v-for="insight in group"
-                :key="insight.id"
-                :insight="insight"
-                @action="(actionId) => handleAction(insight, actionId)"
-                @askAI="handleAskAI(insight)"
-              />
-              <DeepAskAI
-                v-for="insight in group"
-                :key="`deep-${insight.id}`"
-                :insight="insight"
-              />
-            </div>
           </div>
         </div>
       </template>
     </div>
+
+    <DeepAskAI
+      v-if="isAskAIModalOpen && selectedInsightForAI"
+      :insight="selectedInsightForAI"
+      @close="isAskAIModalOpen = false"
+    />
   </div>
 </template>
 

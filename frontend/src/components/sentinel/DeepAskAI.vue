@@ -1,6 +1,6 @@
 <!-- Deep Ask AI Component - Phase 4 -->
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { MessageSquare, Send, Loader2 } from 'lucide-vue-next'
 import { useAI } from '../../composables/useAI'
 import type { Insight } from '../../types/sentinel'
@@ -9,21 +9,26 @@ const props = defineProps<{
   insight: Insight
 }>()
 
-const { analyzeContext, loading } = useAI()
+const { askAboutInsight, loading } = useAI()
 const question = ref('')
 const response = ref<string | null>(null)
+
+onMounted(() => {
+  if (props.insight) {
+    question.value = `Tell me more about this insight: "${props.insight.title}"`
+  }
+})
 
 const ask = async () => {
   if (!question.value.trim()) return
 
-  // Use analyzeContext to get deep insights
-  const analysis = await analyzeContext({
-    type: 'process',
-    id: props.insight.data.process_id?.toString() || ''
+  const result = await askAboutInsight({
+    insight: props.insight,
+    question: question.value
   })
 
-  if (analysis) {
-    response.value = analysis.summary
+  if (result) {
+    response.value = result.answer
   }
 }
 
@@ -46,12 +51,8 @@ const clear = () => {
     </div>
 
     <div class="input-section">
-      <textarea
-        v-model="question"
-        class="question-input"
-        placeholder="Ask a deeper question about this insight..."
-        rows="3"
-      />
+      <textarea v-model="question" class="question-input" placeholder="Ask a deeper question about this insight..."
+        rows="3" />
       <button class="ask-btn" @click="ask" :disabled="loading || !question.trim()">
         <Loader2 v-if="loading" :size="16" class="spin" />
         <Send v-else :size="16" />
@@ -167,8 +168,13 @@ const clear = () => {
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .response-section {
@@ -209,4 +215,3 @@ const clear = () => {
   color: var(--text-primary);
 }
 </style>
-

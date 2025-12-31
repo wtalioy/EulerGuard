@@ -248,41 +248,46 @@ func (s *Sentinel) checkTestingPromotion(ctx context.Context) []*Insight {
 }
 
 func (s *Sentinel) checkAnomalies(ctx context.Context) []*Insight {
-	if s.profileReg == nil || !s.service.IsEnabled() {
+	if s.store == nil || !s.service.IsEnabled() {
 		return nil
 	}
 
-	// Simplified anomaly detection: emit a basic system status insight if rules exist.
-	if s.ruleEngine == nil {
-		return nil
-	}
-
-	rulesList := s.ruleEngine.GetRules()
-	if len(rulesList) == 0 {
-		return nil
-	}
-
-	// Avoid spamming: if we already have a recent status insight (within 5 minutes), skip.
-	existing := s.insights.List(0)
-	for _, in := range existing {
-		if in == nil {
-			continue
+	// Check for recent notable events in the last 15 minutes
+	events, err := s.store.Query(time.Now().Add(-15*time.Minute), time.Now())
+	if err != nil || len(events) == 0 {
+		// No events, so we can create a "Normal" insight
+		now := time.Now()
+		raw := insights.NewInsight(
+			now,
+			insights.NewInsightID("system-status-normal", now),
+			InsightTypeAnomaly,
+			"System Status: Normal",
+			"No notable security events detected in the last 15 minutes. System is operating as expected.",
+			SeverityLow,
+		)
+		insight := &Insight{
+			ID:         raw.ID,
+			Type:       raw.Type.(InsightType),
+			Title:      raw.Title,
+			Summary:    raw.Summary,
+			Confidence: 0.95,
+			Severity:   raw.Severity.(Severity),
+			Data:       raw.Data,
+			Actions:    raw.Actions,
+			CreatedAt:  raw.CreatedAt,
 		}
-		if in.Type == InsightTypeAnomaly && in.Title == "System Monitoring Active" {
-			if time.Since(in.CreatedAt) < 5*time.Minute {
-				return nil
-			}
-		}
+		return []*Insight{insight}
 	}
 
+	// If we have events, create a higher-severity insight
 	now := time.Now()
 	raw := insights.NewInsight(
 		now,
-		insights.NewInsightID("system-status", now),
+		insights.NewInsightID("suspicious-activity", now),
 		InsightTypeAnomaly,
-		"System Monitoring Active",
-		fmt.Sprintf("AI Sentinel is actively monitoring %d security rules. The system is being analyzed for anomalies and security events.", len(rulesList)),
-		SeverityLow,
+		"Suspicious Activity Detected",
+		fmt.Sprintf("Detected %d notable security events in the last 15 minutes that may require investigation.", len(events)),
+		SeverityMedium,
 	)
 	insight := &Insight{
 		ID:         raw.ID,
@@ -295,7 +300,8 @@ func (s *Sentinel) checkAnomalies(ctx context.Context) []*Insight {
 		Actions:    raw.Actions,
 		CreatedAt:  raw.CreatedAt,
 	}
-	insight.Data["rule_count"] = len(rulesList)
+	insight.Data["event_count"] = len(events)
+	insight.Actions = []types.Action{{Label: "Investigate Events", ActionID: "navigate", Params: map[string]any{"page": "observatory"}}}
 	return []*Insight{insight}
 }
 
@@ -339,20 +345,35 @@ func (s *Sentinel) generateDailyReport(ctx context.Context) []*Insight {
 		return nil
 	}
 
-	reportPrompt := `Generate a daily security summary for the Aegis system.
+	// Gather context for the report
+	recentInsights := s.insights.List(10)
+	var insightSummary strings.Builder
+	if len(recentInsights) > 1 { // More than just the welcome message
+		insightSummary.WriteString("Here is a summary of recent activity to analyze:")
+		for _, insight := range recentInsights {
+			// Skip the welcome message and old daily reports
+			if insight.Data["type"] == "welcome" || insight.Type == InsightTypeDailyReport {
+				continue
+			}
+			insightSummary.WriteString(fmt.Sprintf("- At %s, this insight was generated: '%s' with summary: '%s'\n", insight.CreatedAt.Format(time.RFC1123), insight.Title, insight.Summary))
+		}
+	}
+
+	reportPrompt := fmt.Sprintf(`Generate a daily security summary for the system.
 
 Provide a concise, human-readable summary (not JSON) covering:
 1. Overall system security status
-2. Key security events or patterns observed
+2. Key security events or patterns observed (based on the provided context)
 3. Any notable anomalies or concerns
-4. Recommendations for the security team
+4. Recommendations
 
-Format your response as a clear, readable report using markdown. Use headers, bullet points, and clear language. Do not output JSON.
+%s
 
-Keep it under 300 words and focus on actionable insights.`
+Format your response as a direct, professional report using markdown. Use headers and bullet points. Do not add any conversational filler or a concluding summary sentence. If no significant events occurred, state that the system is operating normally.`, insightSummary.String())
 
 	response, err := s.service.SingleChat(ctx, reportPrompt)
 	if err != nil {
+		// Log error
 		return nil
 	}
 

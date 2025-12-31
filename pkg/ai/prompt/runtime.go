@@ -69,7 +69,7 @@ const DiagnosisTemplateText = `## System Diagnosis Request
 Please analyze this telemetry data and provide:
 1. **Diagnosis**: What is happening on this system?
 2. **Security Assessment**: Are there any security concerns?
-3. **Recommendations**: What actions should be taken?
+3. **Recommendations**: What actions should I take?
 
 Keep your response concise and actionable (under 400 words).`
 

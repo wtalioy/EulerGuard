@@ -35,7 +35,12 @@ export function useSentinel() {
         throw new Error(`HTTP ${response.status}`)
       }
       const data = await response.json()
-      insights.value = data.insights || []
+      // Deduplicate by ID in case backend returns duplicates
+      const uniqueMap: Record<string, Insight> = {}
+        ; (data.insights || []).forEach((ins: Insight) => {
+          uniqueMap[ins.id] = ins
+        })
+      insights.value = Object.values(uniqueMap)
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to fetch insights'
     } finally {
@@ -51,10 +56,10 @@ export function useSentinel() {
     }
 
     const sseUrl = `${API_BASE}/ai/sentinel/stream`
-    
+
     try {
       eventSource.value = new EventSource(sseUrl)
-      
+
       // EventSource connection is established when the object is created
       // Check readyState immediately and set connected
       const checkConnection = () => {
@@ -66,28 +71,31 @@ export function useSentinel() {
           }
         }
       }
-      
+
       // Check immediately
       checkConnection()
-      
+
       // Also check after a short delay to ensure connection is established
       setTimeout(checkConnection, 100)
-      
+
       eventSource.value.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
-          
+
           // Handle heartbeat - this confirms connection is alive
           if (data.type === 'heartbeat') {
             connected.value = true
             error.value = null
             return
           }
-          
+
           // Handle insight
           const insight: Insight = data
-          // Add to beginning of list
-          insights.value.unshift(insight)
+          // Deduplicate based on insight id
+          if (!insights.value.some(i => i.id === insight.id)) {
+            // Add to beginning of list
+            insights.value.unshift(insight)
+          }
           // Keep only last 100
           if (insights.value.length > 100) {
             insights.value = insights.value.slice(0, 100)
@@ -96,10 +104,10 @@ export function useSentinel() {
           console.error('[Sentinel] Failed to parse message:', err)
         }
       }
-      
+
       eventSource.value.onerror = (err) => {
         console.error('[Sentinel] SSE error:', err, 'readyState:', eventSource.value?.readyState)
-        
+
         // EventSource readyState: 0=CONNECTING, 1=OPEN, 2=CLOSED
         if (eventSource.value?.readyState === EventSource.CLOSED) {
           connected.value = false

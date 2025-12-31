@@ -1,6 +1,5 @@
 // AI Core Composable
 import { ref } from 'vue'
-import type { Ref } from 'vue'
 
 export interface RuleGenRequest {
   description: string
@@ -46,6 +45,17 @@ export interface AnalyzeResponse {
   baselineStatus: string
   recommendations: any[]
   relatedInsights: any[]
+}
+
+export interface AskInsightRequest {
+  insight: any
+  question: string
+}
+
+export interface AskInsightResponse {
+  answer: string
+  confidence: number
+  related_data?: any
 }
 
 const API_BASE = '/api'
@@ -136,12 +146,38 @@ export function useAI() {
     }
   }
 
+  const askAboutInsight = async (req: AskInsightRequest): Promise<AskInsightResponse | null> => {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await fetch(`${API_BASE}/ai/sentinel/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req)
+      })
+      const text = await response.text()
+      let payload: any = null
+      try { payload = text ? JSON.parse(text) : null } catch { payload = null }
+      if (!response.ok) {
+        error.value = (payload && (payload.error || payload.message)) || `HTTP ${response.status}`
+        return null
+      }
+      return payload as AskInsightResponse
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to ask about insight'
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     loading,
     error,
     generateRule,
     explainEvent,
     analyzeContext,
+    askAboutInsight,
     getAIStatus
   }
 }

@@ -7,7 +7,8 @@ import (
 	"net/http"
 	"strconv"
 	"time"
-
+	
+	"aegis/pkg/apimodel"
 	"aegis/pkg/ai/sentinel"
 	"aegis/pkg/ai/types"
 	"aegis/pkg/events"
@@ -526,6 +527,40 @@ func registerAISentinelHandlers(mux *http.ServeMux, app *server.App) {
 		})
 	})
 
+	mux.HandleFunc("/api/ai/sentinel/ask", func(w http.ResponseWriter, r *http.Request) {
+		setCORS(w)
+		if handleCORSPreflight(w, r, "POST, OPTIONS") {
+			return
+		}
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w)
+			return
+		}
+
+		var req apimodel.AskInsightRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		defer cancel()
+
+		if app.AIService() == nil {
+			writeJSONStringError(w, http.StatusServiceUnavailable, "AI service not available")
+			return
+		}
+
+		// This is a new method I'll need to create on the AIService
+		response, err := app.AIService().AskAboutInsight(ctx, &req)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, err)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, response)
+	})
+
 	mux.HandleFunc("/api/ai/sentinel/action", func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
 		w.Header().Set("Content-Type", "application/json")
@@ -583,6 +618,8 @@ func registerAISentinelHandlers(mux *http.ServeMux, app *server.App) {
 			return
 		}
 	})
+
+	
 }
 
 // --- Explain request parsing ---

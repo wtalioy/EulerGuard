@@ -70,4 +70,33 @@ type ProcessInfo struct {
 	Timestamp int64  `json:"timestamp"`
 }
 
+type InsightAction struct {
+	ActionID string                 `json:"action_id"`
+	Label    string                 `json:"label"`
+	Payload  map[string]interface{} `json:"payload,omitempty"`
+}
+
+type Insight struct {
+	ID         string                 `json:"id"`
+	Type       string                 `json:"type"`
+	Title      string                 `json:"title"`
+	Summary    string                 `json:"summary"`
+	Severity   string                 `json:"severity"`
+	Confidence float64                `json:"confidence"`
+	CreatedAt  interface{}            `json:"created_at"` // Can be string or number
+	Actions    []InsightAction        `json:"actions"`
+	Data       map[string]interface{} `json:"data"`
+}
+
+type AskInsightRequest struct {
+	Insight  Insight `json:"insight"`
+	Question string  `json:"question"`
+}
+
+type AskInsightResponse struct {
+	Answer      string      `json:"answer"`
+	Confidence  float64     `json:"confidence"`
+	RelatedData interface{} `json:"related_data,omitempty"`
+}
+
 

@@ -1,13 +1,15 @@
 <!-- Investigation Page - Phase 4: AI-Assisted Threat Hunting -->
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { useInvestigation } from '../composables/useInvestigation'
 import EventList from '../components/investigation/EventList.vue'
 import AIContextPanel from '../components/investigation/AIContextPanel.vue'
 import { Lightbulb, Search, X, CheckCircle2 } from 'lucide-vue-next'
 const { state, searchEvents, explainSelectedEvent, loading, loadMoreEvents, hasMore, loadingMore, refreshEvents, typeCounts } = useInvestigation()
 const filterType = ref<string>('all')
-const searchQuery = ref('')
+const route = useRoute()
+const searchQuery = ref(route.query.search as string || '')
 const sortBy = ref<'time' | 'pid' | 'type' | 'process'>('time')
 const sortDir = ref<'asc' | 'desc'>('desc')
 
@@ -219,8 +221,10 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 24px; /* Softened */
-  font-weight: 600; /* Softened */
+  font-size: 24px;
+  /* Softened */
+  font-weight: 600;
+  /* Softened */
   color: var(--text-primary);
   margin: 0;
 }
@@ -276,7 +280,8 @@ onUnmounted(() => {
 
 .stat-value {
   font-size: 20px;
-  font-weight: 600; /* Softened */
+  font-weight: 600;
+  /* Softened */
   font-family: var(--font-mono);
   line-height: 1.2;
 }

@@ -1,4 +1,4 @@
-<!-- Sentinel Preview Component - Phase 4 -->
+<!-- Sentinel Preview Component - Updated to use global card styles -->
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { Sparkles, ArrowRight } from 'lucide-vue-next'
@@ -22,89 +22,54 @@ const goToSentinel = () => {
 </script>
 
 <template>
-  <div class="sentinel-preview">
-    <div class="preview-header">
+  <div class="card-base">
+    <div class="card-header-base">
       <div class="header-left">
         <Sparkles :size="20" />
         <h3>AI Sentinel</h3>
       </div>
-      <button class="view-all-btn" @click="goToSentinel">
-        View All
+      <button class="btn btn-secondary" @click="goToSentinel">
+        <span>View All</span>
         <ArrowRight :size="14" />
       </button>
     </div>
 
-    <div v-if="recentInsights.length === 0" class="empty-state">
-      <Sparkles :size="32" />
-      <p>No insights yet</p>
-      <p class="subtitle">AI Sentinel is monitoring your system</p>
-    </div>
+    <div class="card-content-base">
+      <div v-if="recentInsights.length === 0" class="empty-state">
+        <Sparkles :size="32" />
+        <p>No insights yet</p>
+        <p class="subtitle">AI Sentinel is monitoring your system</p>
+      </div>
 
-    <div v-else class="insights-preview">
-      <InsightCard
-        v-for="insight in recentInsights"
-        :key="insight.id"
-        :insight="insight"
-        @action="() => {}"
-        @askAI="() => {}"
-      />
+      <div v-else class="insights-preview">
+        <InsightCard
+          v-for="insight in recentInsights"
+          :key="insight.id"
+          :insight="insight"
+          @action="() => {}"
+          @askAI="() => {}"
+        />
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.sentinel-preview {
-  padding: 20px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-}
-
-.preview-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
 .header-left {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.preview-header h3 {
+.card-header-base h3 {
   font-size: 18px;
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
 }
 
-.view-all-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.view-all-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  border-color: var(--border-default);
-}
-
 .empty-state {
-  padding: 60px 20px;
+  padding: 40px 20px; /* Adjusted padding */
   text-align: center;
   color: var(--text-muted);
 }
@@ -126,4 +91,3 @@ const goToSentinel = () => {
   gap: 16px;
 }
 </style>
-

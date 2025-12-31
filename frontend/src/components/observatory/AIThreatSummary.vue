@@ -1,4 +1,4 @@
-<!-- AI Threat Summary Component - Phase 4 -->
+<!-- AI Threat Summary Component - Updated to use global card styles -->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { AlertTriangle, Skull, CheckCircle2 } from 'lucide-vue-next'
@@ -13,90 +13,87 @@ const props = defineProps<{
   aiSummary?: string
 }>()
 
-const criticalThreats = computed(() => 
+const criticalThreats = computed(() =>
   props.threats.filter(t => t.severity === 'critical' || t.severity === 'high')
 )
 
-const totalThreats = computed(() => 
+const totalThreats = computed(() =>
   props.threats.reduce((sum, t) => sum + t.count, 0)
 )
 
 const severityColor = (severity: string) => {
   switch (severity) {
     case 'critical': return 'var(--status-critical)'
-    case 'high': return 'var(--status-high)'
+    case 'high': return 'var(--status-warning)' // Mapped high to warning for color
     case 'medium': return 'var(--status-warning)'
-    default: return 'var(--status-safe)'
+    default: return 'var(--status-info)'
   }
 }
 </script>
 
 <template>
-  <div class="threat-summary">
-    <div class="summary-header">
-      <AlertTriangle :size="20" />
-      <h3>Threat Summary</h3>
-      <div class="threat-count">{{ totalThreats }} threats</div>
-    </div>
-
-    <div v-if="criticalThreats.length > 0" class="critical-section">
-      <div class="section-title">
-        <Skull :size="16" />
-        <span>Critical Threats</span>
+  <div class="card-base threat-summary">
+    <div class="card-content-base">
+      <div class="summary-header">
+        <AlertTriangle :size="20" />
+        <h3>Threat Summary</h3>
+        <div class="threat-count">{{ totalThreats }} threats</div>
       </div>
-      <div class="threats-list">
-        <div
-          v-for="(threat, idx) in criticalThreats"
-          :key="idx"
-          class="threat-item"
-          :style="{ borderLeftColor: severityColor(threat.severity) }"
-        >
-          <div class="threat-header">
-            <span class="threat-type">{{ threat.type }}</span>
-            <span class="threat-count-badge" :style="{ backgroundColor: severityColor(threat.severity) + '20', color: severityColor(threat.severity) }">
-              {{ threat.count }}
-            </span>
+
+      <div v-if="criticalThreats.length > 0" class="critical-section">
+        <div class="section-title">
+          <Skull :size="16" />
+          <span>Critical Threats</span>
+        </div>
+        <div class="threats-list">
+          <div v-for="(threat, idx) in criticalThreats" :key="idx" class="threat-item"
+            :style="{ borderLeftColor: severityColor(threat.severity) }">
+            <div class="threat-header">
+              <span class="threat-type">{{ threat.type }}</span>
+              <span class="threat-count-badge"
+                :style="{ backgroundColor: severityColor(threat.severity) + '20', color: severityColor(threat.severity) }">
+                {{ threat.count }}
+              </span>
+            </div>
+            <div class="threat-description">{{ threat.description }}</div>
           </div>
-          <div class="threat-description">{{ threat.description }}</div>
         </div>
       </div>
-    </div>
 
-    <div v-if="props.threats.length > 0" class="all-threats">
-      <div class="section-title">All Threats</div>
-      <div class="threats-grid">
-        <div
-          v-for="(threat, idx) in props.threats"
-          :key="idx"
-          class="threat-card"
-        >
-          <div class="card-header">
-            <span class="threat-type">{{ threat.type }}</span>
-            <span class="severity-badge" :style="{ color: severityColor(threat.severity) }">
-              {{ threat.severity }}
-            </span>
+      <div v-if="props.threats.length > 0" class="all-threats">
+        <div class="section-title">All Threats</div>
+        <div class="threats-grid">
+          <div v-for="(threat, idx) in props.threats" :key="idx" class="threat-card">
+            <div class="card-header">
+              <span class="threat-type">{{ threat.type }}</span>
+              <span class="severity-badge" :style="{ color: severityColor(threat.severity) }">
+                {{ threat.severity }}
+              </span>
+            </div>
+            <div class="card-count">{{ threat.count }} occurrences</div>
           </div>
-          <div class="card-count">{{ threat.count }} occurrences</div>
         </div>
       </div>
-    </div>
 
-    <div v-if="props.threats.length === 0" class="no-threats">
-      <CheckCircle2 :size="32" />
-      <p>No active threats detected</p>
+      <div v-if="props.threats.length === 0" class="no-threats">
+        <CheckCircle2 :size="32" />
+        <p>No active threats detected</p>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
 .threat-summary {
-  padding: 20px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
   height: 100%;
+}
+
+.card-content-base {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
 }
 
 .summary-header {
@@ -121,7 +118,7 @@ const severityColor = (severity: string) => {
   font-weight: 600;
   color: var(--text-secondary);
   padding: 4px 12px;
-  background: var(--bg-elevated);
+  background: var(--bg-overlay);
   border-radius: var(--radius-md);
 }
 
@@ -147,7 +144,7 @@ const severityColor = (severity: string) => {
 
 .threat-item {
   padding: 16px;
-  background: var(--bg-elevated);
+  background: var(--bg-overlay);
   border-left: 4px solid;
   border-radius: var(--radius-md);
 }
@@ -179,7 +176,8 @@ const severityColor = (severity: string) => {
 }
 
 .all-threats {
-  margin-top: 24px;
+  margin-top: auto;
+  /* Pushes to the bottom */
   padding-top: 24px;
   border-top: 1px solid var(--border-subtle);
 }
@@ -192,8 +190,7 @@ const severityColor = (severity: string) => {
 
 .threat-card {
   padding: 12px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
+  background: var(--bg-overlay);
   border-radius: var(--radius-md);
 }
 
@@ -217,7 +214,12 @@ const severityColor = (severity: string) => {
 }
 
 .no-threats {
-  padding: 60px 20px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
   text-align: center;
   color: var(--text-muted);
 }
@@ -227,4 +229,3 @@ const severityColor = (severity: string) => {
   font-size: 14px;
 }
 </style>
-

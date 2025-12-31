@@ -5,6 +5,7 @@ import router from './router'
 
 import './assets/styles/variables.css'
 import './assets/styles/reset.css'
+import './assets/styles/components.css'
 
 const app = createApp(App)
 

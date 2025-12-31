@@ -1,4 +1,4 @@
-<!-- AI Health Score Component - Phase 4 -->
+<!-- AI Health Score Component - Updated to use global card styles -->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Heart, TrendingUp, TrendingDown, Minus } from 'lucide-vue-next'
@@ -24,36 +24,31 @@ const scoreLabel = computed(() => {
 </script>
 
 <template>
-  <div class="health-score">
-    <div class="score-header">
-      <Heart :size="24" :color="scoreColor" />
-      <div class="score-display">
-        <div class="score-value" :style="{ color: scoreColor }">
-          {{ score }}/100
+  <div class="card-base">
+    <div class="card-content-base">
+      <div class="score-header">
+        <Heart :size="24" :color="scoreColor" />
+        <div class="score-display">
+          <div class="score-value" :style="{ color: scoreColor }">
+            {{ score }}/100
+          </div>
+          <div class="score-label">{{ scoreLabel }}</div>
         </div>
-        <div class="score-label">{{ scoreLabel }}</div>
+        <div v-if="trend" class="trend">
+          <TrendingUp v-if="trend === 'up'" :size="16" color="var(--status-safe)" />
+          <TrendingDown v-else-if="trend === 'down'" :size="16" color="var(--status-critical)" />
+          <Minus v-else :size="16" :color="scoreColor" />
+        </div>
       </div>
-      <div v-if="trend" class="trend">
-        <TrendingUp v-if="trend === 'up'" :size="16" color="var(--status-safe)" />
-        <TrendingDown v-else-if="trend === 'down'" :size="16" color="var(--status-critical)" />
-        <Minus v-else :size="16" :color="scoreColor" />
+      <div v-if="assessment" class="assessment">
+        <div class="assessment-label">AI Assessment:</div>
+        <div class="assessment-text">{{ assessment }}</div>
       </div>
-    </div>
-    <div v-if="assessment" class="assessment">
-      <div class="assessment-label">AI Assessment:</div>
-      <div class="assessment-text">{{ assessment }}</div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.health-score {
-  padding: 20px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-}
-
 .score-header {
   display: flex;
   align-items: center;

@@ -75,12 +75,12 @@ onUnmounted(() => {
 
 .select-trigger {
   width: 100%;
-  padding: 8px 12px;
-  background: var(--bg-overlay);
+  padding: 9px 16px;
+  background: var(--bg-surface);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   font-size: 13px;
-  color: var(--text-primary);
+  color: var(--text-secondary);
   font-family: inherit;
   cursor: pointer;
   display: flex;
@@ -106,6 +106,7 @@ onUnmounted(() => {
 .select-trigger:hover:not(:disabled) {
   border-color: var(--border-default);
   background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .select-trigger:disabled {
@@ -116,7 +117,6 @@ onUnmounted(() => {
 .custom-select.is-open .select-trigger {
   border-color: var(--accent-primary);
   background: var(--bg-surface);
-  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
 .select-value {

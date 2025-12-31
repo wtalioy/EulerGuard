@@ -263,7 +263,7 @@ const askAction = async () => {
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
-  background: linear-gradient(135deg, var(--bg-elevated) 0%, rgba(26, 26, 36, 0.8) 100%);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   padding: 16px;

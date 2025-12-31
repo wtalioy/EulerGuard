@@ -183,11 +183,7 @@ onMounted(async () => {
           <DefenseStats :stats="defenseStats" trend="stable" />
         </div>
       </div>
-
-      <div class="sentinel-section">
-        <SentinelPreview />
-      </div>
-
+      
       <div class="stats-grid">
         <div class="stat-card">
           <div class="stat-label">Processes</div>
@@ -209,6 +205,10 @@ onMounted(async () => {
           <div class="stat-value">{{ stats?.alertCount || 0 }}</div>
           <QuickAsk question="Show me the most recent alerts" />
         </div>
+      </div>
+      
+      <div class="sentinel-section">
+        <SentinelPreview />
       </div>
     </template>
   </div>
@@ -272,14 +272,13 @@ onMounted(async () => {
 
 .sentinel-section {
   margin-bottom: 40px;
-  /* Increased margin */
 }
 
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 24px;
-  /* Increased gap */
+  margin-bottom: 40px;
 }
 
 .stat-card {

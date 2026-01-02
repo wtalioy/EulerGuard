@@ -20,7 +20,7 @@ Aegis treats AI as a core component of the monitoring loop, not an afterthought.
 - **Real-Time Visualization:** Visualizes process hierarchies and event timelines via a modern Vue 3 frontend.
 - **Ring Buffer Architecture:** Efficient event handling with configurable ring buffer sizes to prevent data loss under high load.
 
-## prerequisites
+## Prerequisites
 
 Before building Aegis, ensure your development environment has the following tools installed:
 

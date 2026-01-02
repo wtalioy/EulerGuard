@@ -103,9 +103,8 @@ The project includes a `Makefile` to streamline development tasks:
 
 ## Support
 
-- **Issues**: Submit bug reports and feature requests via the GitHub Issues page.
 - **Documentation**: Refer to the `docs/` directory.
-- **Demo Video**: [Aegis Demo Video](https://drive.google.com/file/d/1H05MX3L9eFznvqDZYGqb4l_-r8s-e5y0/view?usp=drive_link)
+- **Demo Video**: [Aegis Demo Video](https://pan.baidu.com/s/1oGie3OranmrGJPs19qMc7Q?pwd=a2h4)
 
 ## License
 
